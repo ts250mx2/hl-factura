@@ -566,9 +566,9 @@ export default function ContabilidadPage() {
                     <h2 className="text-sm font-bold">Estados financieros · acumulado al {MESES[Number(mes) - 1]} {anio}</h2>
                     <Badge color={estados.cuadrada ? "green" : "amber"}>{estados.cuadrada ? "Cuadrado" : "Revisar cuadre"}</Badge>
                   </div>
-                  <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => window.print()}>
-                    <Printer className="size-3.5" /> Imprimir
-                  </Button>
+                  <a href={`/contabilidad/estados/imprimir?anio=${anio}&mes=${mes}`} target="_blank" rel="noopener noreferrer">
+                    <Button variant="secondary" className="px-3 py-2 text-xs"><Printer className="size-3.5" /> Exportar PDF</Button>
+                  </a>
                 </div>
 
                 {estados.resultados.ingresos.total === 0 && estados.situacion.totalActivo === 0 ? (
