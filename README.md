@@ -102,10 +102,30 @@ La sincronización y la lista EFOS se administran en **Configuración** (solo ad
 | **Panel fiscal** | ISR RESICO PF (tabla Art. 113-E por flujo cobrado, retenciones acreditables) o pago provisional PM (coeficiente de utilidad), más IVA del mes (cobrado vs acreditable pagado). |
 | **Activos fijos** | Alta con tasas LISR; su depreciación entra sola a las pólizas de diario. |
 
-## Roadmap (siguiente fase)
+## Nómina (Fase 5)
 
-- **Fase 5 · Nómina:** cálculo ISR/subsidio, cuotas IMSS/INFONAVIT, incidencias, timbrado masivo de recibos y exportación SUA/IDSE.
-- **Pendientes menores:** conciliación bancaria semi-automática, factura global desde notas de venta, gestor de archivos del cliente.
+| Función | Cómo |
+|---|---|
+| **Empleados** | Alta con datos SAT (RFC/CURP) e IMSS (NSS, salario diario); SDI y SBC se calculan solos (factor de integración con vacaciones dignas LFT). |
+| **Motor de cálculo** | ISR con tarifa mensual Art. 96 prorrateada a los días del periodo, subsidio al empleo (monto y tope configurables por año), cuotas IMSS obrero desglosadas por ramo, costo patronal estimado (IMSS + INFONAVIT 5%). |
+| **Incidencias** | Por corrida: faltas, horas extra (exento 50% tope 5 UMA/semana), incapacidades, aguinaldo (exento 30 UMA), prima vacacional (exento 15 UMA), bonos y otras deducciones. |
+| **CFDI Nómina 1.2** | Comprobante tipo N + complemento nomina12 completo (receptor laboral, percepciones/deducciones/otros pagos, subsidio causado, incapacidades) con cadena original y sellado CSD. |
+| **Timbrado masivo** | Toda la corrida en un clic, con dedup por periodo (no duplica recibos ya timbrados), envío de XML por correo a cada trabajador y export CSV para SUA/IDSE. |
+
+Los parámetros del año (UMA, subsidio, prima de riesgo, registro patronal, entidad) se administran en Nómina → Configuración.
+
+## Conciliación bancaria
+
+Sube el estado de cuenta (CSV/TXT de cualquier banco — el parser detecta delimitador, columnas
+de fecha/cargo/abono/concepto, símbolos de moneda y formatos de fecha). Los **depósitos** se
+emparejan contra la cartera PPD por monto exacto (saldo o total) y por referencia (folio o nombre
+del cliente). Al confirmar un match se **genera y timbra el REP automáticamente** con la fecha real
+del depósito. Cada movimiento aplicado queda registrado (hash) y no se vuelve a ofrecer al re-subir
+el mismo estado de cuenta.
+
+## Pendientes menores
+
+- Factura global desde notas de venta, gestor de archivos del cliente, registro por invitación.
 
 ## Despliegue a producción (Ubuntu)
 

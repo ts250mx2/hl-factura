@@ -235,6 +235,47 @@ const DDL: string[] = [
     empresaId CHAR(36) NOT NULL PRIMARY KEY,
     datosJson TEXT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS empleados (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    empresaId CHAR(36) NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    rfc VARCHAR(13) NOT NULL,
+    activo TINYINT(1) NOT NULL DEFAULT 1,
+    datosJson TEXT NOT NULL,
+    creadoEl VARCHAR(32) NOT NULL,
+    KEY idx_empresa (empresaId, activo)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS nominas (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    empresaId CHAR(36) NOT NULL,
+    empleadoId CHAR(36) NOT NULL,
+    periodoInicio VARCHAR(10) NOT NULL,
+    periodoFin VARCHAR(10) NOT NULL,
+    estado VARCHAR(16) NOT NULL,
+    uuid CHAR(36) NULL,
+    neto DECIMAL(14,2) NOT NULL DEFAULT 0,
+    datosJson MEDIUMTEXT NOT NULL,
+    creadoEl VARCHAR(32) NOT NULL,
+    UNIQUE KEY uq_periodo (empresaId, empleadoId, periodoInicio, periodoFin),
+    KEY idx_empresa (empresaId, periodoInicio)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS config_nomina (
+    empresaId CHAR(36) NOT NULL PRIMARY KEY,
+    datosJson TEXT NOT NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS conciliaciones (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    empresaId CHAR(36) NOT NULL,
+    hash CHAR(40) NOT NULL,
+    fecha VARCHAR(10) NOT NULL,
+    referencia VARCHAR(300) NULL,
+    monto DECIMAL(14,2) NOT NULL,
+    facturaId CHAR(36) NOT NULL,
+    pagoRepId CHAR(36) NOT NULL,
+    creadoEl VARCHAR(32) NOT NULL,
+    UNIQUE KEY uq_mov (empresaId, hash),
+    KEY idx_empresa (empresaId, creadoEl)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 // Cambios sobre tablas ya existentes: se aplican en cada arranque ignorando
