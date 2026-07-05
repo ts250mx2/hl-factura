@@ -21,6 +21,7 @@ import {
   Printer,
   ClipboardList,
   FileSpreadsheet,
+  CalendarCheck2,
 } from "lucide-react";
 import { api, postJson, putJson, ApiError, mxn } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner } from "@/components/ui";
@@ -49,6 +50,7 @@ const TABS = [
   { clave: "estados", label: "Estados financieros", icon: FileBarChart2 },
   { clave: "impuestos", label: "Impuestos", icon: Percent },
   { clave: "diot", label: "DIOT", icon: FileSpreadsheet },
+  { clave: "anual", label: "Anual", icon: CalendarCheck2 },
   { clave: "catalogo", label: "Catálogo", icon: ListChecks },
   { clave: "activos", label: "Activos", icon: Landmark },
 ] as const;
@@ -118,6 +120,29 @@ interface DiotData {
   sinXml: number;
 }
 
+interface DeclaracionAnual {
+  anio: string;
+  metodo: MetodoIsr;
+  baseIngresos: "cobrados" | "nominales";
+  aplicaDeducciones: boolean;
+  aplicaPersonales: boolean;
+  aplicaPtu: boolean;
+  ingresos: number;
+  deduccionesAutorizadas: number;
+  depreciacion: number;
+  deduccionesPersonales: number;
+  ptuPagada: number;
+  perdidasFiscales: number;
+  utilidadFiscal: number;
+  baseGravable: number;
+  isrCausado: number;
+  retenciones: number;
+  pagosProvisionales: number;
+  isrACargo: number;
+  iva: { cobrado: number; acreditable: number };
+  gastosSinXml: number;
+}
+
 const TIPO_POLIZA: Record<string, { label: string; color: "green" | "red" | "sky" }> = {
   ingresos: { label: "Ingresos", color: "green" },
   egresos: { label: "Egresos", color: "red" },
@@ -152,6 +177,8 @@ export default function ContabilidadPage() {
   const [balanza, setBalanza] = useState<{ renglones: RenglonBalanza[]; totalDebe: number; totalHaber: number; cuadrada: boolean } | null>(null);
   const [estados, setEstados] = useState<EstadosFinancieros | null>(null);
   const [diot, setDiot] = useState<DiotData | null>(null);
+  const [anual, setAnual] = useState<DeclaracionAnual | null>(null);
+  const [ajustes, setAjustes] = useState({ dedPersonales: 0, pagosProv: 0, ptu: 0, perdidas: 0 });
   const [fiscal, setFiscal] = useState<{ panel: PanelFiscal; config: ConfigFiscal } | null>(null);
   const [cuentas, setCuentas] = useState<CuentaContable[]>([]);
   const [activos, setActivos] = useState<ActivoFijo[]>([]);
@@ -203,6 +230,32 @@ export default function ContabilidadPage() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  const cargarAnual = useCallback(
+    async (aj: typeof ajustes) => {
+      try {
+        const q = `anio=${anio}&dedPersonales=${aj.dedPersonales}&pagosProv=${aj.pagosProv}&ptu=${aj.ptu}&perdidas=${aj.perdidas}`;
+        setAnual(await api<DeclaracionAnual>(`/api/contabilidad/anual?${q}`));
+      } catch (e) {
+        toast("error", "Declaración anual", e instanceof ApiError ? e.message : String(e));
+      }
+    },
+    [anio, toast],
+  );
+
+  useEffect(() => {
+    if (tab === "anual") {
+      setAnual(null);
+      cargarAnual(ajustes);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, anio]);
+
+  const actualizarAjuste = (campo: keyof typeof ajustes, valor: string) => {
+    const nuevo = { ...ajustes, [campo]: Number(valor) || 0 };
+    setAjustes(nuevo);
+    cargarAnual(nuevo);
+  };
 
   const generar = async (regenerar: boolean) => {
     setGenerando(true);
@@ -841,6 +894,133 @@ export default function ContabilidadPage() {
                 <p className="text-[10px] leading-relaxed text-ink-400">
                   Todas las operaciones se clasifican como «85 · Otros» por defecto; ajusta el tipo de operación (03 servicios profesionales, 06 arrendamiento) en el portal del SAT según corresponda. El «archivo por lotes» va en pesos sin decimales; verifica las columnas contra la plantilla vigente de la DIOT antes de enviarlo.
                 </p>
+              </div>
+            )}
+
+            {/* ---------- DECLARACIÓN ANUAL ---------- */}
+            {tab === "anual" && (
+              <div className="space-y-4">
+                {!anual ? (
+                  <Spinner label="Acumulando el ejercicio…" />
+                ) : anual.metodo === "ninguno" ? (
+                  <EmptyState
+                    icon={<CalendarCheck2 className="size-7" />}
+                    title="Configura el régimen de cálculo"
+                    detail="En la pestaña Impuestos registra el régimen del contribuyente (o importa su CSF) para pre-llenar la declaración anual."
+                  />
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-bold">Declaración anual pre-llenada · ejercicio {anual.anio}</h2>
+                        <Badge color="brand">{METODO_LABEL[anual.metodo]}</Badge>
+                      </div>
+                      <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => window.print()}>
+                        <Printer className="size-3.5" /> Imprimir
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {/* Datos del ejercicio (auto) + ajustes */}
+                      <div className="card space-y-4 p-5">
+                        <div>
+                          <h3 className="mb-2 text-sm font-bold">Datos del ejercicio (automáticos)</h3>
+                          <dl className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <dt className="text-ink-600">Ingresos {anual.baseIngresos === "nominales" ? "nominales" : "cobrados"} (sin IVA)</dt>
+                              <dd className="tnum font-bold">{mxn.format(anual.ingresos)}</dd>
+                            </div>
+                            {anual.aplicaDeducciones && (
+                              <>
+                                <div className="flex justify-between">
+                                  <dt className="text-ink-600">Deducciones autorizadas pagadas</dt>
+                                  <dd className="tnum font-bold text-emerald-700">−{mxn.format(anual.deduccionesAutorizadas)}</dd>
+                                </div>
+                                {anual.depreciacion > 0 && (
+                                  <div className="flex justify-between pl-3 text-xs">
+                                    <dt className="text-ink-400">de las cuales, depreciación</dt>
+                                    <dd className="tnum text-ink-400">{mxn.format(anual.depreciacion)}</dd>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </dl>
+                          {anual.gastosSinXml > 0 && (
+                            <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
+                              {anual.gastosSinXml} gasto(s) sin XML no se pudieron sumar a las deducciones.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-3">
+                          <h3 className="mb-2 text-sm font-bold">Datos que capturas tú</h3>
+                          <div className="grid grid-cols-2 gap-3">
+                            {anual.aplicaPersonales && (
+                              <Field label="Deducciones personales" hint="Médicos, colegiaturas, etc.">
+                                <Input type="number" min="0" step="0.01" defaultValue={ajustes.dedPersonales || ""} onBlur={(e) => actualizarAjuste("dedPersonales", e.target.value)} className="tnum" />
+                              </Field>
+                            )}
+                            {anual.aplicaPtu && (
+                              <>
+                                <Field label="PTU pagada en el ejercicio">
+                                  <Input type="number" min="0" step="0.01" defaultValue={ajustes.ptu || ""} onBlur={(e) => actualizarAjuste("ptu", e.target.value)} className="tnum" />
+                                </Field>
+                                <Field label="Pérdidas fiscales por amortizar">
+                                  <Input type="number" min="0" step="0.01" defaultValue={ajustes.perdidas || ""} onBlur={(e) => actualizarAjuste("perdidas", e.target.value)} className="tnum" />
+                                </Field>
+                              </>
+                            )}
+                            <Field label="Pagos provisionales del año" hint="Suma de tus pagos mensuales">
+                              <Input type="number" min="0" step="0.01" defaultValue={ajustes.pagosProv || ""} onBlur={(e) => actualizarAjuste("pagosProv", e.target.value)} className="tnum" />
+                            </Field>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-3">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-ink-500">IVA cobrado del año (informativo)</span>
+                            <span className="tnum">{mxn.format(anual.iva.cobrado)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-ink-500">IVA acreditable del año (informativo)</span>
+                            <span className="tnum">{mxn.format(anual.iva.acreditable)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Resultado del ISR anual */}
+                      <div className="card p-5">
+                        <h3 className="mb-3 text-sm font-bold">ISR del ejercicio</h3>
+                        <dl className="space-y-2 text-sm">
+                          {anual.aplicaDeducciones ? (
+                            <>
+                              <div className="flex justify-between"><dt className="text-ink-600">Utilidad fiscal</dt><dd className="tnum font-bold">{mxn.format(anual.utilidadFiscal)}</dd></div>
+                              {anual.aplicaPersonales && anual.deduccionesPersonales > 0 && (
+                                <div className="flex justify-between"><dt className="text-ink-600">Deducciones personales</dt><dd className="tnum font-bold text-emerald-700">−{mxn.format(anual.deduccionesPersonales)}</dd></div>
+                              )}
+                              {anual.aplicaPtu && (anual.ptuPagada > 0 || anual.perdidasFiscales > 0) && (
+                                <div className="flex justify-between"><dt className="text-ink-600">PTU y pérdidas</dt><dd className="tnum font-bold text-emerald-700">−{mxn.format(anual.ptuPagada + anual.perdidasFiscales)}</dd></div>
+                              )}
+                              <div className="flex justify-between"><dt className="text-ink-600">Base gravable</dt><dd className="tnum font-bold">{mxn.format(anual.baseGravable)}</dd></div>
+                            </>
+                          ) : (
+                            <div className="flex justify-between"><dt className="text-ink-600">Ingresos base (RESICO)</dt><dd className="tnum font-bold">{mxn.format(anual.baseGravable)}</dd></div>
+                          )}
+                          <div className="flex justify-between"><dt className="text-ink-600">ISR causado del ejercicio</dt><dd className="tnum font-bold">{mxn.format(anual.isrCausado)}</dd></div>
+                          <div className="flex justify-between"><dt className="text-ink-600">Retenciones acreditables</dt><dd className="tnum font-bold text-emerald-700">−{mxn.format(anual.retenciones)}</dd></div>
+                          <div className="flex justify-between"><dt className="text-ink-600">Pagos provisionales</dt><dd className="tnum font-bold text-emerald-700">−{mxn.format(anual.pagosProvisionales)}</dd></div>
+                          <div className="flex justify-between border-t border-slate-200 pt-2 text-base">
+                            <dt className="font-extrabold">{anual.isrACargo >= 0 ? "ISR anual a cargo" : "ISR anual a favor"}</dt>
+                            <dd className={`tnum font-extrabold ${anual.isrACargo >= 0 ? "text-rose-600" : "text-emerald-700"}`}>{mxn.format(Math.abs(anual.isrACargo))}</dd>
+                          </div>
+                        </dl>
+                        <p className="mt-3 rounded-lg bg-slate-50 p-2 text-[11px] leading-relaxed text-ink-500">
+                          Borrador informativo del ejercicio {anual.anio} con tarifa anual. La declaración real puede variar (acumulados, coeficiente, deducciones tope, actualizaciones). Revísala con tu contador.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
