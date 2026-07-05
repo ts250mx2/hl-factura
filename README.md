@@ -99,7 +99,9 @@ La sincronización y la lista EFOS se administran en **Configuración** (solo ad
 | **Pólizas automáticas** | Un clic contabiliza el mes: facturas emitidas (PUE→bancos/caja, PPD→clientes con IVA pendiente), cobros REP (con reclasificación de IVA), gastos de la bóveda (reglas por RFC/clave de producto; no deducibles a su cuenta) y depreciación mensual de activos. Todas cuadradas o no se registran. |
 | **Catálogo de cuentas** | Semilla editable con código agrupador SAT; reglas contables para dirigir proveedores a cuentas específicas. |
 | **Contabilidad electrónica** | Balanza de comprobación mensual con saldos acumulados + exportación XML del Anexo 24 (CatalogoCuentas 1.3 y BalanzaComprobacion 1.3, nomenclatura RFC+AAAAMM+CT/BN). |
-| **Panel fiscal** | ISR RESICO PF (tabla Art. 113-E por flujo cobrado, retenciones acreditables) o pago provisional PM (coeficiente de utilidad), más IVA del mes (cobrado vs acreditable pagado). |
+| **Estados financieros** | Estado de resultados (ingresos netos, utilidad bruta/operación/antes de impuestos) y estado de situación financiera (activo, pasivo, capital + resultado del ejercicio) construidos desde la balanza acumulada por código agrupador del SAT, con verificación de cuadre e impresión. |
+| **Constancia de Situación Fiscal** | Importa el PDF de la CSF y extrae automáticamente el RFC, la situación en el padrón, los **regímenes** y las **obligaciones** registradas (también se capturan/editan a mano). El PDF queda guardado para volver a descargarlo. |
+| **Impuestos por obligaciones** | El panel arma el cálculo según el régimen y las obligaciones del contribuyente: IVA mensual (flujo), ISR del régimen que corresponda —RESICO PF/PM, Actividad empresarial y profesional (tarifa Art. 96), Arrendamiento (deducción real u opcional 35%) o pago provisional PM por coeficiente— y las retenciones a enterar (ISR por salarios desde la nómina timbrada, e ISR/IVA retenidos a terceros de los CFDI recibidos). |
 | **Activos fijos** | Alta con tasas LISR; su depreciación entra sola a las pólizas de diario. |
 
 ## Nómina (Fase 5)

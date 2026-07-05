@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calculator,
@@ -14,18 +14,38 @@ import {
   Landmark,
   Percent,
   ListChecks,
+  FileBarChart2,
+  UploadCloud,
+  Download,
+  ShieldCheck,
+  Printer,
+  ClipboardList,
 } from "lucide-react";
 import { api, postJson, putJson, ApiError, mxn } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { TASAS_DEPRECIACION } from "@/lib/contabilidad/catalogo";
-import type { Poliza, CuentaContable, ActivoFijo, ReglaContable, ConfigFiscal } from "@/lib/types";
+import { REGIMENES_FISCALES, IMPUESTO_LABEL } from "@/lib/contabilidad/obligaciones";
+import type {
+  Poliza,
+  CuentaContable,
+  ActivoFijo,
+  ReglaContable,
+  ConfigFiscal,
+  PanelFiscal,
+  PerfilFiscal,
+  ObligacionFiscal,
+  RegimenRegistrado,
+  MetodoIsr,
+  TipoImpuesto,
+} from "@/lib/types";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 const TABS = [
   { clave: "polizas", label: "Pólizas", icon: BookOpenCheck },
   { clave: "balanza", label: "Balanza", icon: Scale },
+  { clave: "estados", label: "Estados financieros", icon: FileBarChart2 },
   { clave: "impuestos", label: "Impuestos", icon: Percent },
   { clave: "catalogo", label: "Catálogo", icon: ListChecks },
   { clave: "activos", label: "Activos", icon: Landmark },
@@ -39,11 +59,40 @@ interface RenglonBalanza {
   saldoFinal: number;
 }
 
-interface PanelFiscal {
-  flujo: { ingresosCobrados: number; ivaCobrado: number; retencionesAcreditables: number; ivaAcreditablePagado: number; gastosSinXml: number };
-  iva: { aCargo: number; aFavor: number };
-  resico: null | { tasa: number; isrCausado: number; retenciones: number; isrAPagar: number; excedeLimite: boolean };
-  pm: null | { ingresosNominales: number; coeficiente: number; utilidadEstimada: number; pagoProvisional: number };
+interface LineaEstado {
+  codigo: string;
+  nombre: string;
+  importe: number;
+}
+interface GrupoEstado {
+  titulo: string;
+  lineas: LineaEstado[];
+  total: number;
+}
+interface EstadosFinancieros {
+  cuadrada: boolean;
+  resultados: {
+    ingresos: GrupoEstado;
+    costos: GrupoEstado;
+    utilidadBruta: number;
+    gastos: GrupoEstado;
+    utilidadOperacion: number;
+    otros: GrupoEstado;
+    utilidadNeta: number;
+  };
+  situacion: {
+    activoCirculante: GrupoEstado;
+    activoNoCirculante: GrupoEstado;
+    totalActivo: number;
+    pasivoCortoPlazo: GrupoEstado;
+    pasivoLargoPlazo: GrupoEstado;
+    totalPasivo: number;
+    capitalContable: GrupoEstado;
+    resultadoEjercicio: number;
+    totalCapital: number;
+    totalPasivoMasCapital: number;
+    diferencia: number;
+  };
 }
 
 const TIPO_POLIZA: Record<string, { label: string; color: "green" | "red" | "sky" }> = {
@@ -51,6 +100,21 @@ const TIPO_POLIZA: Record<string, { label: string; color: "green" | "red" | "sky
   egresos: { label: "Egresos", color: "red" },
   diario: { label: "Diario", color: "sky" },
 };
+
+const METODO_LABEL: Record<MetodoIsr, string> = {
+  auto: "Automático (según régimen registrado)",
+  ninguno: "Sin cálculo de ISR",
+  resico_pf: "RESICO · Persona Física (Art. 113-E)",
+  resico_pm: "RESICO · Persona Moral (flujo)",
+  pf_actividad: "Actividades Empresariales y Profesionales (PF)",
+  arrendamiento: "Arrendamiento (PF)",
+  pm_general: "Régimen General PM (coeficiente de utilidad)",
+};
+
+const TIPOS_OBLIGACION: TipoImpuesto[] = [
+  "iva_mensual", "isr_provisional_pf", "isr_provisional_pm", "isr_resico_pf", "isr_resico_pm",
+  "isr_arrendamiento", "ret_isr_salarios", "ret_isr_servicios", "ret_iva", "isr_anual", "informativa", "otro",
+];
 
 export default function ContabilidadPage() {
   const { toast } = useToast();
@@ -63,6 +127,7 @@ export default function ContabilidadPage() {
   const [abierta, setAbierta] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
   const [balanza, setBalanza] = useState<{ renglones: RenglonBalanza[]; totalDebe: number; totalHaber: number; cuadrada: boolean } | null>(null);
+  const [estados, setEstados] = useState<EstadosFinancieros | null>(null);
   const [fiscal, setFiscal] = useState<{ panel: PanelFiscal; config: ConfigFiscal } | null>(null);
   const [cuentas, setCuentas] = useState<CuentaContable[]>([]);
   const [activos, setActivos] = useState<ActivoFijo[]>([]);
@@ -76,13 +141,21 @@ export default function ContabilidadPage() {
   const [formRegla, setFormRegla] = useState({ criterio: "rfc", valor: "", cuentaCodigo: "", nota: "" });
   const [guardando, setGuardando] = useState(false);
 
+  const [modalRegimen, setModalRegimen] = useState(false);
+  const [formRegimen, setFormRegimen] = useState({ clave: "626", fechaInicio: "" });
+  const [modalObligacion, setModalObligacion] = useState(false);
+  const [formObligacion, setFormObligacion] = useState<{ descripcion: string; tipo: TipoImpuesto; fechaInicio: string }>({ descripcion: "", tipo: "iva_mensual", fechaInicio: "" });
+  const [importandoCsf, setImportandoCsf] = useState(false);
+  const csfInput = useRef<HTMLInputElement>(null);
+
   const periodo = `anio=${anio}&mes=${mes}`;
 
   const cargar = useCallback(async () => {
     try {
-      const [p, b, f, c, a, r] = await Promise.all([
+      const [p, b, ef, f, c, a, r] = await Promise.all([
         api<Poliza[]>(`/api/contabilidad/polizas?${periodo}`),
         api<typeof balanza>(`/api/contabilidad/balanza?${periodo}`),
+        api<EstadosFinancieros>(`/api/contabilidad/estados?${periodo}`),
         api<typeof fiscal>(`/api/contabilidad/fiscal?${periodo}`),
         api<CuentaContable[]>("/api/contabilidad/cuentas"),
         api<ActivoFijo[]>("/api/contabilidad/activos"),
@@ -90,6 +163,7 @@ export default function ContabilidadPage() {
       ]);
       setPolizas(p);
       setBalanza(b);
+      setEstados(ef);
       setFiscal(f);
       setCuentas(c);
       setActivos(a);
@@ -168,21 +242,75 @@ export default function ContabilidadPage() {
     }
   };
 
-  const guardarFiscal = async (cfg: ConfigFiscal) => {
+  const guardarFiscal = async (patch: Partial<ConfigFiscal>) => {
+    if (!fiscal) return;
+    const body: Record<string, unknown> = {
+      regimenCalculo: patch.regimenCalculo ?? fiscal.config.regimenCalculo,
+      coeficienteUtilidad: patch.coeficienteUtilidad ?? fiscal.config.coeficienteUtilidad,
+      deduccionCiegaArrendamiento: patch.deduccionCiegaArrendamiento ?? fiscal.config.deduccionCiegaArrendamiento,
+    };
+    if (patch.perfil !== undefined) body.perfil = patch.perfil; // solo cuando se edita el perfil
     try {
-      await putJson("/api/contabilidad/fiscal", cfg);
-      toast("success", "Régimen de cálculo guardado");
+      const r = await putJson<{ config: ConfigFiscal }>("/api/contabilidad/fiscal", body);
+      setFiscal({ ...fiscal, config: r.config });
       await cargar();
     } catch (e) {
       toast("error", "Fiscal", e instanceof ApiError ? e.message : String(e));
     }
   };
 
+  const importarCsf = async (file: File) => {
+    setImportandoCsf(true);
+    try {
+      const form = new FormData();
+      form.set("archivo", file);
+      const r = await api<{ perfil: PerfilFiscal; aviso?: string }>("/api/contabilidad/constancia", { method: "POST", body: form });
+      toast("success", "Constancia importada", `${r.perfil.regimenes.length} régimen(es) y ${r.perfil.obligaciones.length} obligación(es) detectadas.${r.aviso ? ` ${r.aviso}` : ""}`);
+      await cargar();
+    } catch (e) {
+      toast("error", "No se pudo importar la CSF", e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setImportandoCsf(false);
+      if (csfInput.current) csfInput.current.value = "";
+    }
+  };
+
+  const perfil = fiscal?.config.perfil;
+
+  const guardarRegimen = async () => {
+    const cat = REGIMENES_FISCALES.find((r) => r.clave === formRegimen.clave);
+    const nuevo: RegimenRegistrado = { clave: formRegimen.clave, nombre: cat?.nombre ?? formRegimen.clave, fechaInicio: formRegimen.fechaInicio || undefined };
+    const base: PerfilFiscal = perfil ?? { regimenes: [], obligaciones: [] };
+    const regimenes = [...base.regimenes.filter((r) => r.clave !== nuevo.clave), nuevo];
+    await guardarFiscal({ perfil: { ...base, regimenes } });
+    setModalRegimen(false);
+    toast("success", "Régimen agregado");
+  };
+
+  const guardarObligacion = async () => {
+    if (!formObligacion.descripcion.trim()) return toast("error", "Escribe la descripción de la obligación");
+    const nueva: ObligacionFiscal = { descripcion: formObligacion.descripcion.trim(), tipo: formObligacion.tipo, fechaInicio: formObligacion.fechaInicio || undefined };
+    const base: PerfilFiscal = perfil ?? { regimenes: [], obligaciones: [] };
+    await guardarFiscal({ perfil: { ...base, obligaciones: [...base.obligaciones, nueva] } });
+    setModalObligacion(false);
+    setFormObligacion({ descripcion: "", tipo: "iva_mensual", fechaInicio: "" });
+    toast("success", "Obligación agregada");
+  };
+
+  const quitarRegimen = async (clave: string) => {
+    if (!perfil) return;
+    await guardarFiscal({ perfil: { ...perfil, regimenes: perfil.regimenes.filter((r) => r.clave !== clave) } });
+  };
+  const quitarObligacion = async (i: number) => {
+    if (!perfil) return;
+    await guardarFiscal({ perfil: { ...perfil, obligaciones: perfil.obligaciones.filter((_, idx) => idx !== i) } });
+  };
+
   return (
     <div>
       <PageHeader
         title="Contabilidad"
-        subtitle="Pólizas automáticas desde tus CFDI, balanza con exportación al SAT (Anexo 24), activos y panel de impuestos del mes."
+        subtitle="Pólizas automáticas, balanza, estados financieros y un panel de impuestos que se arma con el régimen y las obligaciones de la Constancia de Situación Fiscal."
         actions={
           <div className="flex items-center gap-2">
             <Select value={mes} onChange={(e) => setMes(e.target.value)} className="w-36 py-2 text-xs">
@@ -351,88 +479,260 @@ export default function ContabilidadPage() {
               </div>
             )}
 
+            {/* ---------- ESTADOS FINANCIEROS ---------- */}
+            {tab === "estados" && estados && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold">Estados financieros · acumulado al {MESES[Number(mes) - 1]} {anio}</h2>
+                    <Badge color={estados.cuadrada ? "green" : "amber"}>{estados.cuadrada ? "Cuadrado" : "Revisar cuadre"}</Badge>
+                  </div>
+                  <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => window.print()}>
+                    <Printer className="size-3.5" /> Imprimir
+                  </Button>
+                </div>
+
+                {estados.resultados.ingresos.total === 0 && estados.situacion.totalActivo === 0 ? (
+                  <EmptyState
+                    icon={<FileBarChart2 className="size-7" />}
+                    title="Aún no hay saldos"
+                    detail="Genera las pólizas del periodo para que se construyan el estado de resultados y el estado de situación financiera."
+                  />
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {/* Estado de resultados */}
+                    <div className="card p-5">
+                      <h3 className="mb-3 flex items-center gap-2 text-sm font-bold"><FileBarChart2 className="size-4 text-brand-600" /> Estado de resultados</h3>
+                      <table className="w-full text-xs">
+                        <tbody>
+                          <GrupoRows grupo={estados.resultados.ingresos} />
+                          <GrupoRows grupo={estados.resultados.costos} />
+                          <TotalRow label="Utilidad bruta" valor={estados.resultados.utilidadBruta} />
+                          <GrupoRows grupo={estados.resultados.gastos} />
+                          <TotalRow label="Utilidad de operación" valor={estados.resultados.utilidadOperacion} />
+                          {estados.resultados.otros.lineas.length > 0 && <GrupoRows grupo={estados.resultados.otros} />}
+                          <TotalRow label="Utilidad antes de impuestos" valor={estados.resultados.utilidadNeta} fuerte />
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Estado de situación financiera */}
+                    <div className="card p-5">
+                      <h3 className="mb-3 flex items-center gap-2 text-sm font-bold"><Scale className="size-4 text-brand-600" /> Estado de situación financiera</h3>
+                      <table className="w-full text-xs">
+                        <tbody>
+                          <SeccionRow label="ACTIVO" />
+                          <GrupoRows grupo={estados.situacion.activoCirculante} />
+                          {estados.situacion.activoNoCirculante.lineas.length > 0 && <GrupoRows grupo={estados.situacion.activoNoCirculante} />}
+                          <TotalRow label="Total activo" valor={estados.situacion.totalActivo} fuerte />
+                          <SeccionRow label="PASIVO" />
+                          <GrupoRows grupo={estados.situacion.pasivoCortoPlazo} />
+                          {estados.situacion.pasivoLargoPlazo.lineas.length > 0 && <GrupoRows grupo={estados.situacion.pasivoLargoPlazo} />}
+                          <TotalRow label="Total pasivo" valor={estados.situacion.totalPasivo} />
+                          <SeccionRow label="CAPITAL CONTABLE" />
+                          <GrupoRows grupo={estados.situacion.capitalContable} soloLineas />
+                          <tr className="border-b border-slate-50">
+                            <td className="py-1.5 pl-3 text-ink-600">Resultado del ejercicio</td>
+                            <td className="tnum py-1.5 text-right">{mxn.format(estados.situacion.resultadoEjercicio)}</td>
+                          </tr>
+                          <TotalRow label="Total capital contable" valor={estados.situacion.totalCapital} />
+                          <TotalRow label="Total pasivo + capital" valor={estados.situacion.totalPasivoMasCapital} fuerte />
+                        </tbody>
+                      </table>
+                      {Math.abs(estados.situacion.diferencia) >= 0.5 && (
+                        <p className="mt-3 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
+                          Diferencia de cuadre: {mxn.format(estados.situacion.diferencia)}. Revisa que todas las pólizas del ejercicio estén generadas y cuadradas.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] leading-relaxed text-ink-400">
+                  Construidos desde la balanza acumulada (saldos a la fecha de corte), clasificando cada cuenta por su código agrupador del SAT. Son informativos para revisión y planeación.
+                </p>
+              </div>
+            )}
+
             {/* ---------- IMPUESTOS ---------- */}
             {tab === "impuestos" && fiscal && (
               <div className="space-y-4">
+                {/* Perfil fiscal / Constancia */}
                 <div className="card p-5">
-                  <h2 className="mb-3 text-sm font-bold">Régimen para el cálculo de ISR</h2>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="flex items-center gap-2 text-sm font-bold"><ShieldCheck className="size-4 text-brand-600" /> Situación fiscal del contribuyente</h2>
+                    <div className="flex flex-wrap gap-2">
+                      <input ref={csfInput} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importarCsf(f); }} />
+                      <Button className="px-3 py-2 text-xs" loading={importandoCsf} onClick={() => csfInput.current?.click()}>
+                        <UploadCloud className="size-3.5" /> Importar Constancia (PDF)
+                      </Button>
+                      {perfil?.csfArchivo && (
+                        <a href="/api/contabilidad/constancia/archivo">
+                          <Button variant="secondary" className="px-3 py-2 text-xs"><Download className="size-3.5" /> Descargar CSF</Button>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {!perfil || (perfil.regimenes.length === 0 && perfil.obligaciones.length === 0) ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-5 text-center">
+                      <ClipboardList className="mx-auto mb-2 size-7 text-ink-300" />
+                      <p className="text-sm font-semibold">Sin régimen ni obligaciones registradas</p>
+                      <p className="mx-auto mt-1 max-w-md text-xs text-ink-400">
+                        Sube el PDF de la Constancia de Situación Fiscal (la descargas del SAT con tu RFC) y detecto el régimen y las obligaciones. También puedes capturarlos a mano.
+                      </p>
+                      <div className="mt-3 flex justify-center gap-2">
+                        <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => setModalRegimen(true)}><Plus className="size-3.5" /> Régimen</Button>
+                        <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => setModalObligacion(true)}><Plus className="size-3.5" /> Obligación</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {perfil.rfc && <Badge color="brand">RFC {perfil.rfc}</Badge>}
+                        {perfil.situacion && <Badge color={/activo/i.test(perfil.situacion) ? "green" : "amber"}>{perfil.situacion}</Badge>}
+                        {perfil.tipoPersona && <Badge color="slate">{perfil.tipoPersona === "moral" ? "Persona moral" : "Persona física"}</Badge>}
+                        {perfil.fechaInicioOperaciones && <span className="text-ink-400">Inicio ops.: {perfil.fechaInicioOperaciones}</span>}
+                        {perfil.importadaEl && <span className="text-ink-400">· {perfil.fuente === "csf" ? "CSF importada" : "Editado a mano"} {perfil.importadaEl.slice(0, 10)}</span>}
+                      </div>
+
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">Regímenes</p>
+                          <button onClick={() => setModalRegimen(true)} className="flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:underline"><Plus className="size-3" /> Agregar</button>
+                        </div>
+                        {perfil.regimenes.length === 0 ? (
+                          <p className="text-xs text-ink-400">Sin regímenes registrados.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {perfil.regimenes.map((r) => (
+                              <div key={r.clave} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs">
+                                <Badge color="brand">{r.clave}</Badge>
+                                <span className="min-w-0 flex-1 truncate font-semibold">{r.nombre}</span>
+                                {r.fechaInicio && <span className="text-ink-400">{r.fechaInicio}</span>}
+                                <button onClick={() => quitarRegimen(r.clave)} className="text-rose-500 hover:text-rose-700"><Trash2 className="size-3.5" /></button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">Obligaciones</p>
+                          <button onClick={() => setModalObligacion(true)} className="flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:underline"><Plus className="size-3" /> Agregar</button>
+                        </div>
+                        {perfil.obligaciones.length === 0 ? (
+                          <p className="text-xs text-ink-400">Sin obligaciones registradas.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {perfil.obligaciones.map((o, i) => (
+                              <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs">
+                                <Badge color="sky">{IMPUESTO_LABEL[o.tipo]}</Badge>
+                                <span className="min-w-0 flex-1 truncate">{o.descripcion}</span>
+                                {o.fechaInicio && <span className="text-ink-400">{o.fechaInicio}</span>}
+                                <button onClick={() => quitarObligacion(i)} className="text-rose-500 hover:text-rose-700"><Trash2 className="size-3.5" /></button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Método de cálculo */}
+                <div className="card p-5">
+                  <h2 className="mb-3 text-sm font-bold">Método de cálculo del ISR</h2>
                   <div className="flex flex-wrap items-end gap-3">
-                    <Field label="Régimen de esta empresa">
+                    <Field label="Régimen de cálculo">
                       <Select
                         value={fiscal.config.regimenCalculo}
-                        onChange={(e) => guardarFiscal({ ...fiscal.config, regimenCalculo: e.target.value as ConfigFiscal["regimenCalculo"] })}
-                        className="w-72"
+                        onChange={(e) => guardarFiscal({ regimenCalculo: e.target.value as MetodoIsr })}
+                        className="w-80"
                       >
-                        <option value="ninguno">Sin cálculo automático</option>
-                        <option value="resico_pf">RESICO · Persona Física (Art. 113-E)</option>
-                        <option value="pm_general">Régimen General PM (coeficiente de utilidad)</option>
+                        {(Object.keys(METODO_LABEL) as MetodoIsr[]).map((m) => (
+                          <option key={m} value={m}>{METODO_LABEL[m]}</option>
+                        ))}
                       </Select>
                     </Field>
-                    {fiscal.config.regimenCalculo === "pm_general" && (
+                    {fiscal.config.regimenCalculo === "auto" && (
+                      <p className="pb-2 text-xs text-ink-500">
+                        Se aplicará: <b>{METODO_LABEL[fiscal.panel.metodoIsr]}</b>
+                        {!fiscal.panel.perfilConfigurado && " — registra tu régimen arriba para afinarlo."}
+                      </p>
+                    )}
+                    {fiscal.panel.metodoIsr === "pm_general" && (
                       <Field label="Coeficiente de utilidad" hint="De tu última declaración anual, ej. 0.0854">
                         <Input
                           type="number" step="0.0001" min="0" max="1"
                           defaultValue={fiscal.config.coeficienteUtilidad || ""}
-                          onBlur={(e) => guardarFiscal({ ...fiscal.config, coeficienteUtilidad: Number(e.target.value) || 0 })}
+                          onBlur={(e) => guardarFiscal({ coeficienteUtilidad: Number(e.target.value) || 0 })}
                           className="tnum w-36"
                         />
                       </Field>
                     )}
+                    {fiscal.panel.metodoIsr === "arrendamiento" && (
+                      <label className="flex items-center gap-2 pb-2 text-xs font-semibold text-ink-600">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(fiscal.config.deduccionCiegaArrendamiento)}
+                          onChange={(e) => guardarFiscal({ deduccionCiegaArrendamiento: e.target.checked })}
+                        />
+                        Deducción opcional (35% ciega)
+                      </label>
+                    )}
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="card p-5">
-                    <h3 className="mb-3 text-sm font-bold">IVA del mes (flujo)</h3>
-                    <dl className="space-y-2 text-sm">
-                      <div className="flex justify-between"><dt className="text-ink-600">IVA cobrado</dt><dd className="tnum font-bold">{mxn.format(fiscal.panel.flujo.ivaCobrado)}</dd></div>
-                      <div className="flex justify-between"><dt className="text-ink-600">IVA acreditable pagado</dt><dd className="tnum font-bold text-emerald-700">−{mxn.format(fiscal.panel.flujo.ivaAcreditablePagado)}</dd></div>
-                      <div className="flex justify-between border-t border-slate-200 pt-2 text-base">
-                        <dt className="font-extrabold">{fiscal.panel.iva.aCargo > 0 ? "IVA a cargo" : "IVA a favor"}</dt>
-                        <dd className={`tnum font-extrabold ${fiscal.panel.iva.aCargo > 0 ? "text-rose-600" : "text-emerald-700"}`}>
-                          {mxn.format(fiscal.panel.iva.aCargo > 0 ? fiscal.panel.iva.aCargo : fiscal.panel.iva.aFavor)}
-                        </dd>
-                      </div>
-                    </dl>
-                    {fiscal.panel.flujo.gastosSinXml > 0 && (
-                      <p className="mt-3 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
-                        {fiscal.panel.flujo.gastosSinXml} gasto(s) solo tienen metadata (sin XML): su IVA no se pudo acreditar aquí.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="card p-5">
-                    <h3 className="mb-3 text-sm font-bold">
-                      {fiscal.panel.resico ? "ISR RESICO (flujo del mes)" : fiscal.panel.pm ? "Pago provisional ISR (PM)" : "ISR"}
-                    </h3>
-                    {fiscal.panel.resico ? (
-                      <dl className="space-y-2 text-sm">
-                        <div className="flex justify-between"><dt className="text-ink-600">Ingresos cobrados (sin IVA)</dt><dd className="tnum font-bold">{mxn.format(fiscal.panel.flujo.ingresosCobrados)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-ink-600">Tasa aplicable</dt><dd className="tnum font-bold">{(fiscal.panel.resico.tasa * 100).toFixed(2)}%</dd></div>
-                        <div className="flex justify-between"><dt className="text-ink-600">ISR causado</dt><dd className="tnum font-bold">{mxn.format(fiscal.panel.resico.isrCausado)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-ink-600">Retenciones (1.25% PM)</dt><dd className="tnum font-bold text-emerald-700">−{mxn.format(fiscal.panel.resico.retenciones)}</dd></div>
-                        <div className="flex justify-between border-t border-slate-200 pt-2 text-base"><dt className="font-extrabold">ISR estimado a pagar</dt><dd className="tnum font-extrabold text-rose-600">{mxn.format(fiscal.panel.resico.isrAPagar)}</dd></div>
-                        {fiscal.panel.resico.excedeLimite && (
-                          <p className="rounded-lg bg-rose-50 p-2 text-[11px] font-semibold text-rose-700">
-                            ⚠ Los ingresos del mes exceden el límite RESICO ($3.5M): revisa con tu contador.
-                          </p>
-                        )}
-                      </dl>
-                    ) : fiscal.panel.pm ? (
-                      <dl className="space-y-2 text-sm">
-                        <div className="flex justify-between"><dt className="text-ink-600">Ingresos nominales</dt><dd className="tnum font-bold">{mxn.format(fiscal.panel.pm.ingresosNominales)}</dd></div>
-                        <div className="flex justify-between"><dt className="text-ink-600">× Coeficiente de utilidad</dt><dd className="tnum font-bold">{fiscal.panel.pm.coeficiente}</dd></div>
-                        <div className="flex justify-between"><dt className="text-ink-600">Utilidad estimada</dt><dd className="tnum font-bold">{mxn.format(fiscal.panel.pm.utilidadEstimada)}</dd></div>
-                        <div className="flex justify-between border-t border-slate-200 pt-2 text-base"><dt className="font-extrabold">Pago provisional (30%)</dt><dd className="tnum font-extrabold text-rose-600">{mxn.format(fiscal.panel.pm.pagoProvisional)}</dd></div>
-                      </dl>
-                    ) : (
-                      <p className="py-6 text-center text-sm text-ink-400">Selecciona el régimen de cálculo arriba para ver la estimación del mes.</p>
-                    )}
-                    <p className="mt-3 text-[10px] leading-relaxed text-ink-400">
-                      Estimación informativa para planeación: la declaración definitiva puede variar (deducciones, acumulados, actualizaciones). Revísala con tu contador.
-                    </p>
-                  </div>
+                {/* Base del periodo */}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <MiniStat label="Ingresos cobrados" valor={fiscal.panel.base.ingresosCobrados} />
+                  <MiniStat label="IVA cobrado" valor={fiscal.panel.base.ivaCobrado} />
+                  <MiniStat label="IVA acreditable" valor={fiscal.panel.base.ivaAcreditablePagado} />
+                  <MiniStat label="Retenciones a favor" valor={fiscal.panel.base.retencionesAcreditables} />
                 </div>
+
+                {/* Conceptos de impuesto */}
+                {fiscal.panel.conceptos.length === 0 ? (
+                  <EmptyState
+                    icon={<Percent className="size-7" />}
+                    title="Sin impuestos que calcular este mes"
+                    detail="Registra el régimen y las obligaciones del contribuyente (o importa su CSF) y aquí aparecerá el cálculo de cada impuesto que le corresponde."
+                  />
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {fiscal.panel.conceptos.map((c) => {
+                      const esIva = c.tipo === "iva_mensual";
+                      const aFavor = esIva && c.aCargo < 0;
+                      return (
+                        <div key={c.tipo} className="card p-5">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-bold">{c.titulo}</h3>
+                            <Badge color="slate">{c.periodicidad}</Badge>
+                          </div>
+                          <dl className="space-y-2 text-sm">
+                            {c.reglones.map((r, i) => (
+                              <div key={i} className="flex justify-between">
+                                <dt className="text-ink-600">{r.etiqueta}</dt>
+                                <dd className={`tnum font-bold ${r.tipo === "resta" ? "text-emerald-700" : ""}`}>
+                                  {r.tipo === "resta" ? "−" : ""}{mxn.format(Math.abs(r.valor))}
+                                </dd>
+                              </div>
+                            ))}
+                            <div className="flex justify-between border-t border-slate-200 pt-2 text-base">
+                              <dt className="font-extrabold">{esIva ? (aFavor ? "IVA a favor" : "IVA a cargo") : "A enterar"}</dt>
+                              <dd className={`tnum font-extrabold ${aFavor ? "text-emerald-700" : "text-rose-600"}`}>{mxn.format(Math.abs(c.aCargo))}</dd>
+                            </div>
+                          </dl>
+                          {c.nota && <p className="mt-3 rounded-lg bg-slate-50 p-2 text-[11px] leading-relaxed text-ink-500">{c.nota}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[10px] leading-relaxed text-ink-400">
+                  Estimaciones informativas de flujo para planeación; la declaración definitiva puede variar por acumulados, deducciones y actualizaciones. Revísalas con tu contador.
+                </p>
               </div>
             )}
 
@@ -613,6 +913,92 @@ export default function ContabilidadPage() {
           <Button onClick={guardarRegla} loading={guardando} className="w-full">Guardar regla</Button>
         </div>
       </Modal>
+
+      {/* Modal régimen */}
+      <Modal open={modalRegimen} onClose={() => setModalRegimen(false)} title="Agregar régimen fiscal">
+        <div className="space-y-4">
+          <Field label="Régimen (c_RegimenFiscal)">
+            <Select value={formRegimen.clave} onChange={(e) => setFormRegimen({ ...formRegimen, clave: e.target.value })}>
+              {REGIMENES_FISCALES.map((r) => (
+                <option key={r.clave} value={r.clave}>{r.clave} · {r.nombre}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Fecha de alta (opcional)"><Input type="date" value={formRegimen.fechaInicio} onChange={(e) => setFormRegimen({ ...formRegimen, fechaInicio: e.target.value })} /></Field>
+          <Button onClick={guardarRegimen} className="w-full">Agregar régimen</Button>
+        </div>
+      </Modal>
+
+      {/* Modal obligación */}
+      <Modal open={modalObligacion} onClose={() => setModalObligacion(false)} title="Agregar obligación">
+        <div className="space-y-4">
+          <Field label="Descripción de la obligación">
+            <Input value={formObligacion.descripcion} onChange={(e) => setFormObligacion({ ...formObligacion, descripcion: e.target.value })} placeholder="Pago definitivo mensual de IVA" />
+          </Field>
+          <Field label="Tipo de impuesto">
+            <Select value={formObligacion.tipo} onChange={(e) => setFormObligacion({ ...formObligacion, tipo: e.target.value as TipoImpuesto })}>
+              {TIPOS_OBLIGACION.map((t) => (
+                <option key={t} value={t}>{IMPUESTO_LABEL[t]}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Fecha de inicio (opcional)"><Input type="date" value={formObligacion.fechaInicio} onChange={(e) => setFormObligacion({ ...formObligacion, fechaInicio: e.target.value })} /></Field>
+          <Button onClick={guardarObligacion} className="w-full">Agregar obligación</Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ---------- Subcomponentes de estados financieros ---------- */
+
+function GrupoRows({ grupo, soloLineas }: { grupo: GrupoEstado; soloLineas?: boolean }) {
+  if (grupo.lineas.length === 0) return null;
+  return (
+    <>
+      {!soloLineas && (
+        <tr>
+          <td colSpan={2} className="pt-3 pb-1 text-[11px] font-bold uppercase tracking-wide text-ink-400">{grupo.titulo}</td>
+        </tr>
+      )}
+      {grupo.lineas.map((l) => (
+        <tr key={l.codigo} className="border-b border-slate-50">
+          <td className="py-1.5 pl-3 text-ink-600"><span className="mono text-[10px] text-ink-400">{l.codigo}</span> {l.nombre}</td>
+          <td className="tnum py-1.5 text-right">{mxn.format(l.importe)}</td>
+        </tr>
+      ))}
+      {!soloLineas && (
+        <tr className="border-b border-slate-100">
+          <td className="py-1.5 text-right text-xs font-bold text-ink-500">Total {grupo.titulo.toLowerCase()}</td>
+          <td className="tnum py-1.5 text-right font-bold">{mxn.format(grupo.total)}</td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function TotalRow({ label, valor, fuerte }: { label: string; valor: number; fuerte?: boolean }) {
+  return (
+    <tr className={fuerte ? "border-t-2 border-slate-300" : "border-t border-slate-200"}>
+      <td className={`py-2 ${fuerte ? "text-sm font-extrabold" : "font-bold"}`}>{label}</td>
+      <td className={`tnum py-2 text-right ${fuerte ? "text-sm font-extrabold" : "font-bold"} ${valor < 0 ? "text-rose-600" : ""}`}>{mxn.format(valor)}</td>
+    </tr>
+  );
+}
+
+function SeccionRow({ label }: { label: string }) {
+  return (
+    <tr>
+      <td colSpan={2} className="bg-slate-50 py-1.5 pl-2 text-[11px] font-extrabold uppercase tracking-widest text-brand-700">{label}</td>
+    </tr>
+  );
+}
+
+function MiniStat({ label, valor }: { label: string; valor: number }) {
+  return (
+    <div className="card p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400">{label}</p>
+      <p className="tnum mt-0.5 text-sm font-extrabold">{mxn.format(valor)}</p>
     </div>
   );
 }

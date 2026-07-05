@@ -392,9 +392,98 @@ export interface ActivoFijo {
   creadoEl: string;
 }
 
+/* ---------- Perfil fiscal: régimen y obligaciones (Constancia de Situación Fiscal) ---------- */
+
+export type TipoImpuesto =
+  | "isr_provisional_pf" // ISR pago provisional PF (actividad empresarial/profesional)
+  | "isr_resico_pf" // ISR RESICO persona física
+  | "isr_resico_pm" // ISR RESICO persona moral
+  | "isr_provisional_pm" // ISR pago provisional PM (coeficiente de utilidad)
+  | "isr_arrendamiento" // ISR arrendamiento
+  | "iva_mensual" // IVA pago definitivo mensual
+  | "ret_isr_salarios" // retenciones de ISR por sueldos y salarios
+  | "ret_isr_servicios" // retenciones de ISR por servicios profesionales/arrendamiento a terceros
+  | "ret_iva" // retenciones de IVA a terceros
+  | "isr_anual" // declaración anual
+  | "informativa" // DIOT u otras informativas
+  | "otro";
+
+export interface RegimenRegistrado {
+  clave: string; // clave c_RegimenFiscal, ej. "626"
+  nombre: string;
+  fechaInicio?: string;
+  fechaFin?: string;
+}
+
+export interface ObligacionFiscal {
+  descripcion: string; // texto tal cual aparece en la CSF
+  tipo: TipoImpuesto; // clasificación derivada
+  fechaInicio?: string;
+  fechaFin?: string;
+}
+
+/** Perfil fiscal del contribuyente, tomado de su Constancia de Situación Fiscal. */
+export interface PerfilFiscal {
+  rfc?: string;
+  curp?: string;
+  nombre?: string;
+  codigoPostal?: string;
+  tipoPersona?: "fisica" | "moral";
+  situacion?: string; // "ACTIVO", "SUSPENDIDO"...
+  fechaInicioOperaciones?: string;
+  regimenes: RegimenRegistrado[];
+  obligaciones: ObligacionFiscal[];
+  csfArchivo?: string; // ruta del PDF guardado en data/
+  importadaEl?: string; // ISO
+  fuente?: "csf" | "manual";
+}
+
+export type MetodoIsr =
+  | "auto" // se deriva del régimen/obligaciones del perfil
+  | "ninguno"
+  | "resico_pf"
+  | "resico_pm"
+  | "pm_general"
+  | "pf_actividad"
+  | "arrendamiento";
+
 export interface ConfigFiscal {
-  regimenCalculo: "ninguno" | "resico_pf" | "pm_general";
-  coeficienteUtilidad: number; // solo PM, ej. 0.0854
+  regimenCalculo: MetodoIsr;
+  coeficienteUtilidad: number; // solo PM general, ej. 0.0854
+  deduccionCiegaArrendamiento?: boolean; // arrendamiento PF: usar deducción opcional 35%
+  perfil?: PerfilFiscal;
+}
+
+export interface ReglonImpuesto {
+  etiqueta: string;
+  valor: number;
+  tipo?: "resta" | "total";
+}
+
+export interface ConceptoImpuesto {
+  tipo: TipoImpuesto;
+  titulo: string;
+  periodicidad: "mensual" | "anual";
+  reglones: ReglonImpuesto[];
+  aCargo: number; // resultado a pagar (negativo = a favor)
+  nota?: string;
+}
+
+export interface PanelFiscal {
+  periodo: { anio: string; mes: string };
+  metodoIsr: MetodoIsr;
+  perfilConfigurado: boolean;
+  base: {
+    ingresosCobrados: number;
+    ivaCobrado: number;
+    ivaAcreditablePagado: number;
+    retencionesAcreditables: number;
+    gastosDeduciblesPagados: number;
+    gastosSinXml: number;
+    retencionesTerceros: { isr: number; iva: number };
+    isrRetenidoNomina: number;
+  };
+  conceptos: ConceptoImpuesto[];
 }
 
 export interface DbShape {

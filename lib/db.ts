@@ -8,9 +8,10 @@ export const DATA_DIR = path.join(process.cwd(), "data");
 export const CERTS_DIR = path.join(DATA_DIR, "certificados");
 export const CFDI_DIR = path.join(DATA_DIR, "cfdi");
 export const DESCARGAS_DIR = path.join(DATA_DIR, "descargas");
+export const CONSTANCIAS_DIR = path.join(DATA_DIR, "constancias");
 
 export function ensureDirs() {
-  for (const dir of [DATA_DIR, CERTS_DIR, CFDI_DIR, DESCARGAS_DIR]) {
+  for (const dir of [DATA_DIR, CERTS_DIR, CFDI_DIR, DESCARGAS_DIR, CONSTANCIAS_DIR]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }

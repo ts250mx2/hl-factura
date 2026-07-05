@@ -175,7 +175,7 @@ export async function eliminarActivo(empresaId: string, id: string): Promise<voi
 
 /* ---------- Configuración fiscal por empresa ---------- */
 
-const FISCAL_DEFAULT: ConfigFiscal = { regimenCalculo: "ninguno", coeficienteUtilidad: 0 };
+const FISCAL_DEFAULT: ConfigFiscal = { regimenCalculo: "auto", coeficienteUtilidad: 0 };
 
 export async function getConfigFiscal(empresaId: string): Promise<ConfigFiscal> {
   const r = await rows("SELECT datosJson FROM config_fiscal WHERE empresaId = ?", [empresaId]);
