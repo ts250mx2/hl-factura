@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Printer,
   ClipboardList,
+  FileSpreadsheet,
 } from "lucide-react";
 import { api, postJson, putJson, ApiError, mxn } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner } from "@/components/ui";
@@ -47,6 +48,7 @@ const TABS = [
   { clave: "balanza", label: "Balanza", icon: Scale },
   { clave: "estados", label: "Estados financieros", icon: FileBarChart2 },
   { clave: "impuestos", label: "Impuestos", icon: Percent },
+  { clave: "diot", label: "DIOT", icon: FileSpreadsheet },
   { clave: "catalogo", label: "Catálogo", icon: ListChecks },
   { clave: "activos", label: "Activos", icon: Landmark },
 ] as const;
@@ -95,6 +97,27 @@ interface EstadosFinancieros {
   };
 }
 
+interface RenglonDiot {
+  tipoTercero: string;
+  tipoOperacion: string;
+  rfc: string;
+  nombre: string;
+  base16: number;
+  iva16: number;
+  base8: number;
+  iva8: number;
+  base0: number;
+  exento: number;
+  ivaRetenido: number;
+  ivaNoAcreditable: number;
+  comprobantes: number;
+}
+interface DiotData {
+  renglones: RenglonDiot[];
+  totales: Omit<RenglonDiot, "tipoTercero" | "tipoOperacion" | "rfc" | "nombre">;
+  sinXml: number;
+}
+
 const TIPO_POLIZA: Record<string, { label: string; color: "green" | "red" | "sky" }> = {
   ingresos: { label: "Ingresos", color: "green" },
   egresos: { label: "Egresos", color: "red" },
@@ -128,6 +151,7 @@ export default function ContabilidadPage() {
   const [generando, setGenerando] = useState(false);
   const [balanza, setBalanza] = useState<{ renglones: RenglonBalanza[]; totalDebe: number; totalHaber: number; cuadrada: boolean } | null>(null);
   const [estados, setEstados] = useState<EstadosFinancieros | null>(null);
+  const [diot, setDiot] = useState<DiotData | null>(null);
   const [fiscal, setFiscal] = useState<{ panel: PanelFiscal; config: ConfigFiscal } | null>(null);
   const [cuentas, setCuentas] = useState<CuentaContable[]>([]);
   const [activos, setActivos] = useState<ActivoFijo[]>([]);
@@ -152,10 +176,11 @@ export default function ContabilidadPage() {
 
   const cargar = useCallback(async () => {
     try {
-      const [p, b, ef, f, c, a, r] = await Promise.all([
+      const [p, b, ef, dt, f, c, a, r] = await Promise.all([
         api<Poliza[]>(`/api/contabilidad/polizas?${periodo}`),
         api<typeof balanza>(`/api/contabilidad/balanza?${periodo}`),
         api<EstadosFinancieros>(`/api/contabilidad/estados?${periodo}`),
+        api<DiotData>(`/api/contabilidad/diot?${periodo}`),
         api<typeof fiscal>(`/api/contabilidad/fiscal?${periodo}`),
         api<CuentaContable[]>("/api/contabilidad/cuentas"),
         api<ActivoFijo[]>("/api/contabilidad/activos"),
@@ -164,6 +189,7 @@ export default function ContabilidadPage() {
       setPolizas(p);
       setBalanza(b);
       setEstados(ef);
+      setDiot(dt);
       setFiscal(f);
       setCuentas(c);
       setActivos(a);
@@ -732,6 +758,88 @@ export default function ContabilidadPage() {
                 )}
                 <p className="text-[10px] leading-relaxed text-ink-400">
                   Estimaciones informativas de flujo para planeación; la declaración definitiva puede variar por acumulados, deducciones y actualizaciones. Revísalas con tu contador.
+                </p>
+              </div>
+            )}
+
+            {/* ---------- DIOT ---------- */}
+            {tab === "diot" && diot && (
+              <div className="space-y-4">
+                <div className="card p-5">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-sm font-bold"><FileSpreadsheet className="size-4 text-brand-600" /> DIOT · {MESES[Number(mes) - 1]} {anio}</h2>
+                      <p className="mt-0.5 text-xs text-ink-400">
+                        Operaciones con proveedores (CFDI recibidos y pagados). {diot.renglones.length} proveedor(es){diot.sinXml > 0 ? ` · ${diot.sinXml} sin XML (no desglosados)` : ""}.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <a href={`/api/contabilidad/diot?${periodo}&formato=csv`}>
+                        <Button variant="secondary" className="px-3 py-2 text-xs"><FileDown className="size-3.5" /> CSV (revisión)</Button>
+                      </a>
+                      <a href={`/api/contabilidad/diot?${periodo}&formato=txt`}>
+                        <Button variant="secondary" className="px-3 py-2 text-xs"><Download className="size-3.5" /> Archivo por lotes</Button>
+                      </a>
+                    </div>
+                  </div>
+
+                  {diot.renglones.length === 0 ? (
+                    <EmptyState
+                      icon={<FileSpreadsheet className="size-7" />}
+                      title="Sin operaciones con terceros este mes"
+                      detail="La DIOT toma los CFDI recibidos pagados (PUE) del periodo desde la bóveda. Importa o sincroniza tus gastos y aquí aparecerán agrupados por proveedor."
+                    />
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-ink-400">
+                            <th className="py-2 pr-3">Proveedor</th>
+                            <th className="py-2 pr-3">Tipo</th>
+                            <th className="py-2 pr-3 text-right">Base 16%</th>
+                            <th className="py-2 pr-3 text-right">IVA 16%</th>
+                            <th className="py-2 pr-3 text-right">Base 8%</th>
+                            <th className="py-2 pr-3 text-right">Base 0%</th>
+                            <th className="py-2 pr-3 text-right">Exento</th>
+                            <th className="py-2 pr-3 text-right">IVA ret.</th>
+                            <th className="py-2 text-right">IVA no acr.</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {diot.renglones.map((r) => (
+                            <tr key={r.rfc} className="border-b border-slate-50">
+                              <td className="py-2 pr-3">
+                                <span className="mono text-[10px] text-ink-400">{r.rfc}</span>
+                                <span className="block max-w-[16rem] truncate">{r.nombre}</span>
+                              </td>
+                              <td className="py-2 pr-3"><Badge color="slate">{r.tipoTercero}·{r.tipoOperacion}</Badge></td>
+                              <td className="tnum py-2 pr-3 text-right">{mxn.format(r.base16)}</td>
+                              <td className="tnum py-2 pr-3 text-right">{mxn.format(r.iva16)}</td>
+                              <td className="tnum py-2 pr-3 text-right">{r.base8 ? mxn.format(r.base8) : "—"}</td>
+                              <td className="tnum py-2 pr-3 text-right">{r.base0 ? mxn.format(r.base0) : "—"}</td>
+                              <td className="tnum py-2 pr-3 text-right">{r.exento ? mxn.format(r.exento) : "—"}</td>
+                              <td className="tnum py-2 pr-3 text-right">{r.ivaRetenido ? mxn.format(r.ivaRetenido) : "—"}</td>
+                              <td className="tnum py-2 text-right">{r.ivaNoAcreditable ? mxn.format(r.ivaNoAcreditable) : "—"}</td>
+                            </tr>
+                          ))}
+                          <tr className="border-t-2 border-slate-300 font-extrabold">
+                            <td className="py-2 pr-3">Totales</td>
+                            <td />
+                            <td className="tnum py-2 pr-3 text-right">{mxn.format(diot.totales.base16)}</td>
+                            <td className="tnum py-2 pr-3 text-right">{mxn.format(diot.totales.iva16)}</td>
+                            <td className="tnum py-2 pr-3 text-right">{mxn.format(diot.totales.base8)}</td>
+                            <td className="tnum py-2 pr-3 text-right">{mxn.format(diot.totales.base0)}</td>
+                            <td className="tnum py-2 pr-3 text-right">{mxn.format(diot.totales.exento)}</td>
+                            <td className="tnum py-2 pr-3 text-right">{mxn.format(diot.totales.ivaRetenido)}</td>
+                            <td className="tnum py-2 text-right">{mxn.format(diot.totales.ivaNoAcreditable)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] leading-relaxed text-ink-400">
+                  Todas las operaciones se clasifican como «85 · Otros» por defecto; ajusta el tipo de operación (03 servicios profesionales, 06 arrendamiento) en el portal del SAT según corresponda. El «archivo por lotes» va en pesos sin decimales; verifica las columnas contra la plantilla vigente de la DIOT antes de enviarlo.
                 </p>
               </div>
             )}

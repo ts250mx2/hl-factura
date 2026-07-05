@@ -102,6 +102,7 @@ La sincronización y la lista EFOS se administran en **Configuración** (solo ad
 | **Estados financieros** | Estado de resultados (ingresos netos, utilidad bruta/operación/antes de impuestos) y estado de situación financiera (activo, pasivo, capital + resultado del ejercicio) construidos desde la balanza acumulada por código agrupador del SAT, con verificación de cuadre e impresión. |
 | **Constancia de Situación Fiscal** | Importa el PDF de la CSF y extrae automáticamente el RFC, la situación en el padrón, los **regímenes** y las **obligaciones** registradas (también se capturan/editan a mano). El PDF queda guardado para volver a descargarlo. |
 | **Impuestos por obligaciones** | El panel arma el cálculo según el régimen y las obligaciones del contribuyente: IVA mensual (flujo), ISR del régimen que corresponda —RESICO PF/PM, Actividad empresarial y profesional (tarifa Art. 96), Arrendamiento (deducción real u opcional 35%) o pago provisional PM por coeficiente— y las retenciones a enterar (ISR por salarios desde la nómina timbrada, e ISR/IVA retenidos a terceros de los CFDI recibidos). |
+| **DIOT** | Declaración Informativa de Operaciones con Terceros: agrupa los CFDI recibidos y pagados (PUE) del mes por proveedor, desglosando la base de IVA por tasa (16/8/0/exento), el IVA acreditable, el retenido y el no acreditable. Exporta CSV de revisión y archivo por lotes (pipe, en pesos sin decimales). |
 | **Activos fijos** | Alta con tasas LISR; su depreciación entra sola a las pólizas de diario. |
 
 ## Nómina (Fase 5)
