@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // La validación real de la sesión ocurre en cada API route (aquí solo se
 // verifica presencia de la cookie, el middleware corre en Edge sin acceso a la BD).
 
-const RUTAS_PUBLICAS = ["/login", "/api/auth/login", "/api/auth/setup", "/api/auth/estado"];
+const RUTAS_PUBLICAS = ["/login", "/api/auth/login", "/api/auth/setup", "/api/auth/registro", "/api/auth/estado"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

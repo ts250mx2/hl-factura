@@ -336,6 +336,67 @@ export interface ConfigSmtp {
   recordatoriosAuto: boolean;
 }
 
+/* ---------- Fase 4: contabilidad ---------- */
+
+export interface CuentaContable {
+  empresaId: string;
+  codigo: string; // ej. "102.01"
+  nombre: string;
+  codigoAgrupador: string; // Anexo 24 del SAT
+  naturaleza: "D" | "A"; // deudora / acreedora
+  nivel: number; // 1 = mayor, 2 = subcuenta
+}
+
+export type TipoPoliza = "ingresos" | "egresos" | "diario";
+
+export interface MovimientoPoliza {
+  cuenta: string;
+  nombreCuenta: string;
+  debe: number;
+  haber: number;
+}
+
+export interface Poliza {
+  id: string;
+  empresaId: string;
+  tipo: TipoPoliza;
+  numero: number; // consecutivo dentro del mes por tipo
+  fecha: string; // YYYY-MM-DD
+  mes: string; // "07"
+  anio: string; // "2026"
+  concepto: string;
+  origenTipo: "factura" | "pago" | "gasto" | "depreciacion" | "manual";
+  origenId: string; // id/uuid del documento origen (dedup)
+  movimientos: MovimientoPoliza[];
+  total: number; // suma del debe (== haber)
+  creadoEl: string;
+}
+
+export interface ReglaContable {
+  id: string;
+  empresaId: string;
+  criterio: "rfc" | "claveProdServ";
+  valor: string; // RFC del proveedor o prefijo de clave (ej. "8111")
+  cuentaCodigo: string;
+  nota?: string;
+  creadoEl: string;
+}
+
+export interface ActivoFijo {
+  id: string;
+  empresaId: string;
+  descripcion: string;
+  moi: number; // monto original de la inversión (sin IVA)
+  fechaAdquisicion: string; // YYYY-MM-DD
+  tasaAnual: number; // % LISR, ej. 30 para cómputo
+  creadoEl: string;
+}
+
+export interface ConfigFiscal {
+  regimenCalculo: "ninguno" | "resico_pf" | "pm_general";
+  coeficienteUtilidad: number; // solo PM, ej. 0.0854
+}
+
 export interface DbShape {
   emisores: Emisor[];
   clientes: Cliente[];

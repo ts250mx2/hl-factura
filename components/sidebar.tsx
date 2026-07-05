@@ -22,6 +22,7 @@ import {
   HandCoins,
   Wallet,
   CalendarClock,
+  Calculator,
 } from "lucide-react";
 import { useSesion } from "./session-provider";
 import type { Rol } from "@/lib/types";
@@ -40,6 +41,7 @@ const NAV: Item[] = [
   { href: "/cxc", label: "Por cobrar", icon: Wallet },
   { href: "/cxp", label: "Por pagar", icon: CalendarClock },
   { href: "/boveda", label: "Bóveda CFDI", icon: Archive },
+  { href: "/contabilidad", label: "Contabilidad", icon: Calculator, roles: ["admin", "supervisor", "auxiliar"] },
   { href: "/alertas", label: "Alertas", icon: Bell },
   { href: "/emisores", label: "Empresas / RFCs", icon: Building2, roles: ["admin", "supervisor"] },
   { href: "/clientes", label: "Clientes", icon: Users },

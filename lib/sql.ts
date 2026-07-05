@@ -185,6 +185,56 @@ const DDL: string[] = [
     despachoId CHAR(36) NOT NULL PRIMARY KEY,
     datosJson TEXT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS cuentas (
+    empresaId CHAR(36) NOT NULL,
+    codigo VARCHAR(20) NOT NULL,
+    nombre VARCHAR(200) NOT NULL,
+    codigoAgrupador VARCHAR(20) NOT NULL,
+    naturaleza CHAR(1) NOT NULL,
+    nivel INT NOT NULL DEFAULT 2,
+    PRIMARY KEY (empresaId, codigo)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS polizas (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    empresaId CHAR(36) NOT NULL,
+    tipo VARCHAR(10) NOT NULL,
+    numero INT NOT NULL,
+    fecha VARCHAR(10) NOT NULL,
+    mes CHAR(2) NOT NULL,
+    anio CHAR(4) NOT NULL,
+    concepto VARCHAR(500) NOT NULL,
+    origenTipo VARCHAR(16) NOT NULL,
+    origenId VARCHAR(64) NOT NULL,
+    movimientosJson TEXT NOT NULL,
+    total DECIMAL(14,2) NOT NULL,
+    creadoEl VARCHAR(32) NOT NULL,
+    UNIQUE KEY uq_origen (empresaId, origenTipo, origenId),
+    KEY idx_periodo (empresaId, anio, mes, tipo)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS reglas_contables (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    empresaId CHAR(36) NOT NULL,
+    criterio VARCHAR(20) NOT NULL,
+    valor VARCHAR(50) NOT NULL,
+    cuentaCodigo VARCHAR(20) NOT NULL,
+    nota VARCHAR(300) NULL,
+    creadoEl VARCHAR(32) NOT NULL,
+    KEY idx_empresa (empresaId)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS activos_fijos (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    empresaId CHAR(36) NOT NULL,
+    descripcion VARCHAR(300) NOT NULL,
+    moi DECIMAL(14,2) NOT NULL,
+    fechaAdquisicion VARCHAR(10) NOT NULL,
+    tasaAnual DECIMAL(6,2) NOT NULL,
+    creadoEl VARCHAR(32) NOT NULL,
+    KEY idx_empresa (empresaId)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS config_fiscal (
+    empresaId CHAR(36) NOT NULL PRIMARY KEY,
+    datosJson TEXT NOT NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 // Cambios sobre tablas ya existentes: se aplican en cada arranque ignorando

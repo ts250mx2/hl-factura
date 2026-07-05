@@ -92,9 +92,20 @@ La sincronización y la lista EFOS se administran en **Configuración** (solo ad
 | **Recordatorios de cobranza** | Correo con plantilla profesional vía SMTP configurable (manual desde CXC o automático nocturno para vencidas, activable en Configuración). |
 | **Cuentas por pagar** | Los CFDI recibidos de la bóveda alimentan el panel CXP con su blindaje fiscal visible (EFOS, no deducible, cancelado); programa fechas de pago o márcalos pagados con nota. |
 
+## Contabilidad automatizada (Fase 4)
+
+| Función | Cómo |
+|---|---|
+| **Pólizas automáticas** | Un clic contabiliza el mes: facturas emitidas (PUE→bancos/caja, PPD→clientes con IVA pendiente), cobros REP (con reclasificación de IVA), gastos de la bóveda (reglas por RFC/clave de producto; no deducibles a su cuenta) y depreciación mensual de activos. Todas cuadradas o no se registran. |
+| **Catálogo de cuentas** | Semilla editable con código agrupador SAT; reglas contables para dirigir proveedores a cuentas específicas. |
+| **Contabilidad electrónica** | Balanza de comprobación mensual con saldos acumulados + exportación XML del Anexo 24 (CatalogoCuentas 1.3 y BalanzaComprobacion 1.3, nomenclatura RFC+AAAAMM+CT/BN). |
+| **Panel fiscal** | ISR RESICO PF (tabla Art. 113-E por flujo cobrado, retenciones acreditables) o pago provisional PM (coeficiente de utilidad), más IVA del mes (cobrado vs acreditable pagado). |
+| **Activos fijos** | Alta con tasas LISR; su depreciación entra sola a las pólizas de diario. |
+
 ## Roadmap (siguiente fase)
 
-- **Fase 4 · Contabilidad y nómina:** pólizas automáticas desde XML, contabilidad electrónica (catálogo con código agrupador + balanza), RESICO/PM, nómina con timbrado masivo.
+- **Fase 5 · Nómina:** cálculo ISR/subsidio, cuotas IMSS/INFONAVIT, incidencias, timbrado masivo de recibos y exportación SUA/IDSE.
+- **Pendientes menores:** conciliación bancaria semi-automática, factura global desde notas de venta, gestor de archivos del cliente.
 
 ## Despliegue a producción (Ubuntu)
 
