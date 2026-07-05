@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Sparkles, LogIn, Building2, ShieldCheck, FileCheck2, CloudDownload } from "lucide-react";
+import { Sparkles, LogIn, Building2, ShieldCheck, FileCheck2, CloudDownload, UserPlus } from "lucide-react";
 import { api, postJson, ApiError } from "@/lib/client";
 import { Button, Field, Input } from "@/components/ui";
 
+type Modo = "login" | "registro";
+
 export default function LoginPage() {
   const router = useRouter();
-  const [requiereSetup, setRequiereSetup] = useState<boolean | null>(null);
+  const [modo, setModo] = useState<Modo | null>(null);
   const [despacho, setDespacho] = useState("");
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -18,17 +20,23 @@ export default function LoginPage() {
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
+    // Si el sistema está recién instalado (sin usuarios), abre directo en registro
     api<{ requiereSetup: boolean }>("/api/auth/estado")
-      .then((r) => setRequiereSetup(r.requiereSetup))
-      .catch(() => setRequiereSetup(false));
+      .then((r) => setModo(r.requiereSetup ? "registro" : "login"))
+      .catch(() => setModo("login"));
   }, []);
+
+  const cambiarModo = (m: Modo) => {
+    setModo(m);
+    setError("");
+  };
 
   const enviar = async () => {
     setError("");
     setEnviando(true);
     try {
-      if (requiereSetup) {
-        await postJson("/api/auth/setup", { despacho, nombre, email, password });
+      if (modo === "registro") {
+        await postJson("/api/auth/registro", { despacho, nombre, email, password });
       } else {
         await postJson("/api/auth/login", { email, password });
       }
@@ -40,6 +48,8 @@ export default function LoginPage() {
       setEnviando(false);
     }
   };
+
+  const esRegistro = modo === "registro";
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b0d1f] p-6">
@@ -99,21 +109,48 @@ export default function LoginPage() {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="card w-full max-w-md justify-self-center p-8"
         >
-          {requiereSetup === null ? (
+          {modo === null ? (
             <p className="py-10 text-center text-sm text-ink-600">Cargando…</p>
           ) : (
             <>
+              {/* Selector de modo */}
+              <div className="mb-6 flex rounded-xl bg-slate-100 p-1">
+                {(
+                  [
+                    { m: "login" as const, label: "Iniciar sesión", icon: LogIn },
+                    { m: "registro" as const, label: "Crear despacho", icon: UserPlus },
+                  ]
+                ).map(({ m, label, icon: Icon }) => (
+                  <button
+                    key={m}
+                    onClick={() => cambiarModo(m)}
+                    className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
+                      modo === m ? "text-white" : "text-ink-600 hover:text-ink-900"
+                    }`}
+                  >
+                    {modo === m && (
+                      <motion.span
+                        layoutId="login-pill"
+                        className="absolute inset-0 rounded-lg bg-gradient-to-r from-brand-600 to-violet-600 shadow"
+                      />
+                    )}
+                    <Icon className="relative z-10 size-3.5" />
+                    <span className="relative z-10">{label}</span>
+                  </button>
+                ))}
+              </div>
+
               <h2 className="text-xl font-extrabold text-ink-900">
-                {requiereSetup ? "Crea tu despacho" : "Inicia sesión"}
+                {esRegistro ? "Registra tu despacho" : "Bienvenido de vuelta"}
               </h2>
               <p className="mt-1 text-sm text-ink-600">
-                {requiereSetup
-                  ? "Primer arranque: registra tu despacho o empresa y tu cuenta de administrador."
-                  : "Entra con tu cuenta del despacho."}
+                {esRegistro
+                  ? "Crea el espacio de tu despacho o empresa con tu cuenta de administrador. Podrás invitar a tu equipo y clientes después."
+                  : "Entra con tu correo y contraseña."}
               </p>
 
               <div className="mt-6 space-y-4">
-                {requiereSetup && (
+                {esRegistro && (
                   <>
                     <Field label="Nombre del despacho / empresa">
                       <Input value={despacho} onChange={(e) => setDespacho(e.target.value)} placeholder="Despacho Contable Hidalgo" />
@@ -132,13 +169,13 @@ export default function LoginPage() {
                     autoComplete="username"
                   />
                 </Field>
-                <Field label="Contraseña" hint={requiereSetup ? "Mínimo 8 caracteres." : undefined}>
+                <Field label="Contraseña" hint={esRegistro ? "Mínimo 8 caracteres." : undefined}>
                   <Input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    autoComplete={requiereSetup ? "new-password" : "current-password"}
+                    autoComplete={esRegistro ? "new-password" : "current-password"}
                     onKeyDown={(e) => e.key === "Enter" && enviar()}
                   />
                 </Field>
@@ -152,8 +189,31 @@ export default function LoginPage() {
                   </motion.p>
                 )}
                 <Button onClick={enviar} loading={enviando} className="w-full py-3">
-                  <LogIn className="size-4" /> {requiereSetup ? "Crear despacho y entrar" : "Entrar"}
+                  {esRegistro ? (
+                    <>
+                      <UserPlus className="size-4" /> Crear despacho y entrar
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="size-4" /> Entrar
+                    </>
+                  )}
                 </Button>
+                <p className="text-center text-xs text-ink-400">
+                  {esRegistro ? (
+                    <>¿Ya tienes cuenta?{" "}
+                      <button onClick={() => cambiarModo("login")} className="font-bold text-brand-600 hover:underline">
+                        Inicia sesión
+                      </button>
+                    </>
+                  ) : (
+                    <>¿Primera vez aquí?{" "}
+                      <button onClick={() => cambiarModo("registro")} className="font-bold text-brand-600 hover:underline">
+                        Registra tu despacho
+                      </button>
+                    </>
+                  )}
+                </p>
               </div>
             </>
           )}
