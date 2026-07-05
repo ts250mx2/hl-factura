@@ -1,0 +1,28 @@
+import fs from "fs";
+import { fail } from "@/lib/api-helpers";
+import { requireCtx, requireEmpresa, authFail } from "@/lib/auth";
+import { getFactura } from "@/lib/repos";
+
+type Params = { params: Promise<{ id: string }> };
+
+export async function GET(_req: Request, { params }: Params) {
+  try {
+    const ctx = await requireCtx();
+    const { id } = await params;
+    const factura = await getFactura(id);
+    if (!factura || !factura.xmlPath || !fs.existsSync(factura.xmlPath)) {
+      return fail("XML no disponible", 404);
+    }
+    await requireEmpresa(ctx, factura.emisorId);
+    const xml = fs.readFileSync(factura.xmlPath, "utf8");
+    const nombre = `${factura.emisorRfc}_${factura.serie}${factura.folio}${factura.uuid ? "_" + factura.uuid : ""}.xml`;
+    return new Response(xml, {
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${nombre}"`,
+      },
+    });
+  } catch (e) {
+    return authFail(e);
+  }
+}

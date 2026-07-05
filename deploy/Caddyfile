@@ -1,0 +1,15 @@
+# Reverse proxy con HTTPS automático (Let's Encrypt).
+# Sustituye "portal.tudominio.mx" por tu dominio apuntado a la IP del servidor.
+# Si aún no tienes dominio, usa el bloque alternativo de abajo.
+
+portal.tudominio.mx {
+	reverse_proxy 127.0.0.1:3000
+	encode gzip
+}
+
+# --- Alternativa SIN dominio (certificado autofirmado, el navegador avisará) ---
+# https://74.208.192.90 {
+# 	tls internal
+# 	reverse_proxy 127.0.0.1:3000
+# 	encode gzip
+# }
