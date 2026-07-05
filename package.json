@@ -4,9 +4,9 @@
   "private": true,
   "description": "Portal de facturación electrónica CFDI 4.0 (SAT México)",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3029",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3030",
     "lint": "next lint"
   },
   "dependencies": {
