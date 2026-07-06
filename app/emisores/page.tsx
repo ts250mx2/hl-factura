@@ -165,6 +165,8 @@ export default function EmisoresPage() {
   const [certifica, setCertifica] = useState<Emisor | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [form, setForm] = useState({ rfc: "", nombre: "", regimenFiscal: "", codigoPostal: "", serie: "A" });
+  const [csfFile, setCsfFile] = useState<File | null>(null);
+  const [parsingCsf, setParsingCsf] = useState(false);
 
   const cargar = useCallback(async () => {
     const data = await api<Emisor[]>("/api/emisores");
@@ -182,13 +184,53 @@ export default function EmisoresPage() {
     return esPersonaMoral(form.rfc.trim().toUpperCase()) ? r.moral : r.fisica;
   });
 
+  const cerrarModal = () => {
+    setModalNuevo(false);
+    setForm({ rfc: "", nombre: "", regimenFiscal: "", codigoPostal: "", serie: "A" });
+    setCsfFile(null);
+  };
+
+  const rellenarDesdeCsf = async (file: File) => {
+    setParsingCsf(true);
+    try {
+      const fd = new FormData();
+      fd.set("archivo", file);
+      const d = await api<{ rfc: string; nombre: string; codigoPostal: string; regimenFiscal: string; regimenes: { clave: string }[]; obligaciones: number }>(
+        "/api/emisores/parse-csf",
+        { method: "POST", body: fd },
+      );
+      setForm({ rfc: d.rfc, nombre: d.nombre, regimenFiscal: d.regimenFiscal, codigoPostal: d.codigoPostal, serie: "A" });
+      setCsfFile(file);
+      toast(
+        "success",
+        "Datos tomados de la Constancia",
+        `${d.regimenes.length} régimen(es) y ${d.obligaciones} obligación(es) detectadas; se guardarán al crear la empresa.`,
+      );
+    } catch (e) {
+      toast("error", "No se pudo leer la CSF", e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setParsingCsf(false);
+    }
+  };
+
   const crear = async () => {
     setGuardando(true);
     try {
-      await postJson("/api/emisores", form);
-      toast("success", "Emisor creado", `${form.nombre} quedó registrado. Ahora sube su CSD y FIEL.`);
-      setModalNuevo(false);
-      setForm({ rfc: "", nombre: "", regimenFiscal: "", codigoPostal: "", serie: "A" });
+      if (csfFile) {
+        const fd = new FormData();
+        fd.set("archivo", csfFile);
+        fd.set("rfc", form.rfc);
+        fd.set("nombre", form.nombre);
+        fd.set("regimenFiscal", form.regimenFiscal);
+        fd.set("codigoPostal", form.codigoPostal);
+        fd.set("serie", form.serie);
+        const r = await api<{ regimenes: number; obligaciones: number }>("/api/emisores/desde-csf", { method: "POST", body: fd });
+        toast("success", "Empresa creada desde la CSF", `${form.nombre}: se guardó su perfil fiscal (${r.obligaciones} obligación(es)). Ahora sube su CSD y FIEL.`);
+      } else {
+        await postJson("/api/emisores", form);
+        toast("success", "Emisor creado", `${form.nombre} quedó registrado. Ahora sube su CSD y FIEL.`);
+      }
+      cerrarModal();
       await cargar();
     } catch (e) {
       toast("error", "Revisa los datos", e instanceof ApiError ? e.message : String(e));
@@ -293,11 +335,35 @@ export default function EmisoresPage() {
       {/* Modal nuevo emisor */}
       <Modal
         open={modalNuevo}
-        onClose={() => setModalNuevo(false)}
-        title="Nuevo emisor"
-        subtitle="Usa los datos exactamente como aparecen en la Constancia de Situación Fiscal."
+        onClose={cerrarModal}
+        title="Nueva empresa"
+        subtitle="Sube la Constancia de Situación Fiscal para llenar los datos, o captúralos a mano."
       >
         <div className="space-y-4">
+          <label
+            className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-sm font-semibold transition ${csfFile ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-brand-200 bg-brand-50/50 text-brand-700 hover:border-brand-400"}`}
+          >
+            <UploadCloud className="size-4 shrink-0" />
+            <span className="truncate">
+              {parsingCsf ? "Leyendo Constancia…" : csfFile ? `CSF cargada: ${csfFile.name}` : "Rellenar desde la Constancia (PDF)"}
+            </span>
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              disabled={parsingCsf}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) rellenarDesdeCsf(f);
+              }}
+            />
+          </label>
+          {csfFile && (
+            <p className="-mt-2 text-[11px] text-emerald-700">
+              También se guardará su régimen y obligaciones. Revisa los datos y ajústalos si hace falta.
+            </p>
+          )}
+
           <Field
             label="RFC"
             error={form.rfc && !rfcInfo.valido ? rfcInfo.errores[0] : undefined}
@@ -346,7 +412,7 @@ export default function EmisoresPage() {
             </Field>
           </div>
           <Button onClick={crear} loading={guardando} className="w-full">
-            Guardar emisor
+            {csfFile ? "Crear empresa desde la CSF" : "Guardar emisor"}
           </Button>
         </div>
       </Modal>

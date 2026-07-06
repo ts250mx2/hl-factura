@@ -43,6 +43,7 @@ Producción: `npm run build && npm start`. En el primer arranque, la pantalla de
 
 | Función | Cómo |
 |---|---|
+| **Alta desde la Constancia (CSF)** | Sube el PDF de la Constancia de Situación Fiscal al dar de alta una empresa: se llenan RFC, razón social (sin régimen de capital), código postal y régimen fiscal, y se guarda su **perfil fiscal** (régimen + obligaciones) y el propio PDF. Revisas y ajustas antes de crear. |
 | **Certificados CSD y FIEL** | Sube `.cer` + `.key` + contraseña. Se valida: contraseña, correspondencia criptográfica cer↔key, RFC vs empresa, vigencia y tipo (distingue CSD de FIEL por key usage). |
 | **Emisión CFDI 4.0** | XML del Anexo 20, cadena original según el XSLT oficial 4.0, sello SHA-256/RSA, IVA 16/8/0/exento, retenciones ISR/IVA, descuentos, factura global, moneda extranjera. |
 | **Timbrado** | Modo **demo** (timbre simulado sin validez, para probar) o **SW Sapien** (sandbox gratuito o producción). |

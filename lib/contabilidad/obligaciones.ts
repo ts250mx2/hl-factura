@@ -116,6 +116,15 @@ export function metodoIsrDesdePerfil(perfil?: PerfilFiscal): MetodoIsr {
   return "ninguno";
 }
 
+/** Régimen principal para facturar (c_RegimenFiscal) a partir del perfil. */
+export function regimenPrincipalParaFacturar(perfil?: PerfilFiscal): string {
+  const claves = (perfil?.regimenes ?? []).map((r) => r.clave);
+  // Prioridad: los que facturan por encima de sueldos (605) / sin obligaciones (616).
+  const prioridad = ["626", "612", "601", "606", "603", "620", "622", "625", "623", "624", "608", "607", "611", "614", "615", "610", "621", "605", "616"];
+  for (const c of prioridad) if (claves.includes(c)) return c;
+  return claves[0] ?? "";
+}
+
 /** Conjunto de impuestos aplicables a partir de las obligaciones registradas. */
 export function impuestosDesdePerfil(perfil?: PerfilFiscal): Set<TipoImpuesto> {
   const set = new Set<TipoImpuesto>();
