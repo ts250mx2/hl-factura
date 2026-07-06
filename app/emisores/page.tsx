@@ -12,6 +12,7 @@ import {
   Trash2,
   FileKey2,
   UploadCloud,
+  CloudDownload,
 } from "lucide-react";
 import { api, postJson, ApiError, fechaCorta } from "@/lib/client";
 import { Button, Field, Input, Select, Modal, PageHeader, EmptyState, Badge, Spinner, listContainer, listItem } from "@/components/ui";
@@ -167,6 +168,8 @@ export default function EmisoresPage() {
   const [form, setForm] = useState({ rfc: "", nombre: "", regimenFiscal: "", codigoPostal: "", serie: "A" });
   const [csfFile, setCsfFile] = useState<File | null>(null);
   const [parsingCsf, setParsingCsf] = useState(false);
+  const [csfSat, setCsfSat] = useState<string | null>(null);
+  const [diagCsf, setDiagCsf] = useState<{ error?: string; pasos: { paso: string; url?: string; status?: number; detalle?: string }[] } | null>(null);
 
   const cargar = useCallback(async () => {
     const data = await api<Emisor[]>("/api/emisores");
@@ -236,6 +239,27 @@ export default function EmisoresPage() {
       toast("error", "Revisa los datos", e instanceof ApiError ? e.message : String(e));
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const descargarCsfSat = async (emisor: Emisor) => {
+    setCsfSat(emisor.id);
+    setDiagCsf(null);
+    try {
+      const r = await api<{ ok: boolean; guardado?: boolean; obligaciones?: number; error?: string; pasos: { paso: string; url?: string; status?: number; detalle?: string }[] }>(
+        `/api/emisores/${emisor.id}/csf-sat`,
+        { method: "POST" },
+      );
+      if (r.ok) {
+        toast("success", "CSF descargada del SAT", `Se guardó su perfil fiscal (${r.obligaciones ?? 0} obligación(es)). Consúltala en Contabilidad → Impuestos.`);
+      } else {
+        toast("error", "No se pudo descargar la CSF (beta)", r.error ?? "Revisa el diagnóstico.");
+        setDiagCsf({ error: r.error, pasos: r.pasos ?? [] });
+      }
+    } catch (e) {
+      toast("error", "Error al descargar la CSF", e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setCsfSat(null);
     }
   };
 
@@ -327,6 +351,17 @@ export default function EmisoresPage() {
               <Button variant="secondary" className="mt-4 w-full" onClick={() => setCertifica(emisor)}>
                 <FileKey2 className="size-4" /> Administrar certificados
               </Button>
+              {emisor.fiel && (
+                <Button
+                  variant="ghost"
+                  className="mt-2 w-full text-xs"
+                  loading={csfSat === emisor.id}
+                  onClick={() => descargarCsfSat(emisor)}
+                  title="Autentica en el SAT con la FIEL y baja la Constancia de Situación Fiscal"
+                >
+                  <CloudDownload className="size-4" /> Descargar CSF del SAT (beta)
+                </Button>
+              )}
             </motion.div>
           ))}
         </motion.div>
@@ -429,6 +464,47 @@ export default function EmisoresPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <FormularioCertificado emisor={certifica} tipo="csd" onDone={cargar} />
             <FormularioCertificado emisor={certifica} tipo="fiel" onDone={cargar} />
+          </div>
+        )}
+      </Modal>
+
+      {/* Diagnóstico de la descarga de CSF (beta) */}
+      <Modal
+        open={Boolean(diagCsf)}
+        onClose={() => setDiagCsf(null)}
+        title="Descarga de CSF (beta) · diagnóstico"
+        subtitle="Copia estos pasos y pásamelos para afinar el flujo con el SAT."
+        wide
+      >
+        {diagCsf && (
+          <div className="space-y-3">
+            {diagCsf.error && <p className="rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700">{diagCsf.error}</p>}
+            <div className="max-h-80 overflow-auto rounded-lg border border-slate-200">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-ink-500">
+                    <th className="p-1.5">Paso</th>
+                    <th className="p-1.5">Estado</th>
+                    <th className="p-1.5">URL / detalle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {diagCsf.pasos.map((p, i) => (
+                    <tr key={i} className="border-b border-slate-50 align-top">
+                      <td className="p-1.5 font-semibold">{p.paso}</td>
+                      <td className="p-1.5 tnum">{p.status ?? ""}</td>
+                      <td className="p-1.5 break-all text-ink-500">
+                        <span className="mono">{p.url}</span>
+                        {p.detalle ? <span className="block text-ink-400">{p.detalle}</span> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-ink-400">
+              Mientras afinamos esto, siempre puedes usar «Rellenar desde la Constancia (PDF)» al crear la empresa, o importar el PDF en Contabilidad → Impuestos.
+            </p>
           </div>
         )}
       </Modal>
