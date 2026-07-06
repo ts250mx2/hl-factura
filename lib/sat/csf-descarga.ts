@@ -167,13 +167,10 @@ function attrDe(tag: string, nombre: string): string | undefined {
   return m ? m[1] : undefined;
 }
 
-/** Extrae el primer <form> de la página con sus campos (name→value). */
-function parseForm(html: string): Formulario | null {
-  const fm = html.match(/<form\b[^>]*>([\s\S]*?)<\/form>/i);
-  if (!fm) return null;
-  const abre = html.slice(fm.index!, fm.index! + fm[0].indexOf(">") + 1);
+/** Parsea un bloque <form> (tag de apertura + cuerpo) a su modelo. */
+function parseBloque(abre: string, cuerpo: string): Formulario {
   const inputs: Record<string, string> = {};
-  for (const inp of fm[1].matchAll(/<input\b[^>]*>/gi)) {
+  for (const inp of cuerpo.matchAll(/<input\b[^>]*>/gi)) {
     const tag = inp[0];
     const name = attrDe(tag, "name");
     if (!name) continue;
@@ -182,6 +179,30 @@ function parseForm(html: string): Formulario | null {
     inputs[name] = attrDe(tag, "value") ?? "";
   }
   return { action: attrDe(abre, "action") || "", method: (attrDe(abre, "method") || "post").toLowerCase(), inputs };
+}
+
+/** Recorre todos los <form>…</form> de la página. */
+function* formularios(html: string): Generator<{ abre: string; cuerpo: string }> {
+  for (const m of html.matchAll(/<form\b[^>]*>([\s\S]*?)<\/form>/gi)) {
+    yield { abre: m[0].slice(0, m[0].indexOf(">") + 1), cuerpo: m[1] };
+  }
+}
+
+/** Extrae el primer <form> de la página con sus campos (name→value). */
+function parseForm(html: string): Formulario | null {
+  for (const f of formularios(html)) return parseBloque(f.abre, f.cuerpo);
+  return null;
+}
+
+/** Extrae el <form> que contiene un campo dado (por name o id). La página del
+ *  certform trae DOS formularios (el de la plantilla gob.mx y el real
+ *  id="certform"); hay que elegir el que tiene el input `token`. */
+function parseFormConCampo(html: string, campo: string): Formulario | null {
+  const re = new RegExp(`(?:name|id)\\s*=\\s*"${campo}"`, "i");
+  for (const f of formularios(html)) {
+    if (re.test(f.cuerpo) || re.test(f.abre)) return parseBloque(f.abre, f.cuerpo);
+  }
+  return null;
 }
 
 async function enviarForm(jar: Jar, form: Formulario, base: string, pasos: PasoDiag[], etiqueta: string): Promise<Salto> {
@@ -253,7 +274,9 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
     // 2) Extraer el reto y los campos ocultos del certform.
     const tokenuuid = attrDe(html.match(/id="tokenuuid"[^>]*>/i)?.[0] || "", "value") || "";
     if (!tokenuuid) return { ok: false, pasos, error: "El SAT no entregó el reto (tokenuuid)." };
-    const certform = parseForm(html);
+    // La página trae DOS <form>; hay que tomar el que contiene el campo `token`
+    // (id="certform"), no el primero (plantilla gob.mx).
+    const certform = parseFormConCampo(html, "token") || parseForm(html);
     if (!certform) return { ok: false, pasos, error: "No se encontró el formulario de e.firma." };
 
     // 3) Firmar el reto con la FIEL (desde la base de datos) y colocar el token.
@@ -266,7 +289,7 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
 
     // 4) Enviar la autenticación (el certform postea a su propia URL) y seguir
     //    el regreso SAML hasta el PDF.
-    s = await enviarForm(jar, { action: "", method: "post", inputs: certform.inputs }, s.url, pasos, "Autenticación");
+    s = await enviarForm(jar, certform, s.url, pasos, "Autenticación");
     s = await seguirAutoSubmit(jar, s, pasos, "Constancia");
 
     if (esPdf(s)) return { ok: true, pdf: s.body, rfc: fiel.rfc, pasos };
