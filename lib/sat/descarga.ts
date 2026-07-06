@@ -20,6 +20,28 @@ import { DESCARGAS_DIR, ensureDirs } from "../db";
 // Descarga masiva de CFDI directamente del SAT usando la FIEL (e.firma) del
 // emisor. Flujo oficial del SAT: solicitar → verificar → descargar paquetes.
 
+// Tiempo máximo de espera (ms) para cada llamada al web service del SAT. Es
+// importante fijarlo: si no, ante un timeout la librería lanza un Error plano
+// sin getResponse() y el flujo revienta con "webError.getResponse is not a
+// function". Con timeout explícito, un tiempo agotado sale como error limpio.
+const SAT_WS_TIMEOUT_MS = Number(process.env.SAT_WS_TIMEOUT_MS ?? 90_000);
+
+/** Convierte errores crudos del SAT/red en mensajes claros y accionables. */
+function traducirErrorSat(e: unknown): Error {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/getResponse is not a function/i.test(msg) || /time ?out/i.test(msg) || /ETIMEDOUT|ECONNRESET|EAI_AGAIN|ENOTFOUND|socket hang up/i.test(msg)) {
+    return new Error(
+      "El SAT no respondió a tiempo o se interrumpió la conexión. Suele ser intermitente en el web service del SAT: vuelve a intentar en un momento.",
+    );
+  }
+  if (/ENOENT|no such file/i.test(msg)) {
+    return new Error(
+      "No se encontró la FIEL de esta empresa. Vuelve a subir el .cer y el .key en Emisores → Administrar certificados (ahora se guardan en la base de datos).",
+    );
+  }
+  return e instanceof Error ? e : new Error(msg);
+}
+
 function crearServicio(emisor: Emisor): Service {
   if (!emisor.fiel) {
     throw new Error("Este emisor no tiene FIEL (e.firma) cargada. Súbela en la sección Emisores.");
@@ -35,7 +57,7 @@ function crearServicio(emisor: Emisor): Service {
       "La FIEL no es válida para este servicio (puede estar vencida o ser un CSD en lugar de la e.firma).",
     );
   }
-  return new Service(new FielRequestBuilder(fiel), new HttpsWebClient());
+  return new Service(new FielRequestBuilder(fiel), new HttpsWebClient(undefined, undefined, SAT_WS_TIMEOUT_MS));
 }
 
 export interface SolicitudArgs {
@@ -57,7 +79,12 @@ export async function solicitarDescarga(emisor: Emisor, args: SolicitudArgs) {
     .withDownloadType(new DownloadType(args.tipo === "emitidas" ? "issued" : "received"))
     .withRequestType(new RequestType(args.formato === "xml" ? "xml" : "metadata"));
 
-  const query = await service.query(parameters);
+  let query;
+  try {
+    query = await service.query(parameters);
+  } catch (e) {
+    throw traducirErrorSat(e);
+  }
   if (!query.getStatus().isAccepted()) {
     throw new Error(`El SAT no aceptó la solicitud: ${query.getStatus().getMessage()}`);
   }
@@ -74,7 +101,12 @@ export interface EstadoVerificacion {
 
 export async function verificarDescarga(emisor: Emisor, requestId: string): Promise<EstadoVerificacion> {
   const service = crearServicio(emisor);
-  const verify = await service.verify(requestId);
+  let verify;
+  try {
+    verify = await service.verify(requestId);
+  } catch (e) {
+    throw traducirErrorSat(e);
+  }
   if (!verify.getStatus().isAccepted()) {
     return {
       aceptada: false,
@@ -119,7 +151,12 @@ export async function verificarDescarga(emisor: Emisor, requestId: string): Prom
 export async function descargarPaquete(emisor: Emisor, packageId: string): Promise<string> {
   ensureDirs();
   const service = crearServicio(emisor);
-  const download = await service.download(packageId);
+  let download;
+  try {
+    download = await service.download(packageId);
+  } catch (e) {
+    throw traducirErrorSat(e);
+  }
   if (!download.getStatus().isAccepted()) {
     throw new Error(`No se pudo descargar el paquete: ${download.getStatus().getMessage()}`);
   }
