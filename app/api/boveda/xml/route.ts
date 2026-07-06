@@ -1,7 +1,7 @@
-import fs from "fs";
 import { fail } from "@/lib/api-helpers";
 import { requireCtx, requireEmpresa, authFail } from "@/lib/auth";
 import { getCfdiDescargado } from "@/lib/repos";
+import { leerXml, idCfdi } from "@/lib/archivos";
 
 export async function GET(req: Request) {
   try {
@@ -12,10 +12,10 @@ export async function GET(req: Request) {
     await requireEmpresa(ctx, empresaId);
 
     const cfdi = await getCfdiDescargado(uuid, empresaId);
-    if (!cfdi || !cfdi.xmlPath || !fs.existsSync(cfdi.xmlPath)) {
+    const xml = cfdi ? await leerXml(idCfdi(empresaId, uuid), cfdi.xmlPath) : null;
+    if (!xml) {
       return fail("El XML de este CFDI no está en la bóveda (solo se tiene su metadata).", 404);
     }
-    const xml = fs.readFileSync(cfdi.xmlPath, "utf8");
     return new Response(xml, {
       headers: {
         "Content-Type": "application/xml; charset=utf-8",

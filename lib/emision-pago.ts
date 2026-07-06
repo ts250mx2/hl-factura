@@ -1,6 +1,4 @@
-import fs from "fs";
-import path from "path";
-import { CFDI_DIR, ensureDirs } from "./db";
+import { guardarArchivo, idEmitido } from "./archivos";
 import {
   genId,
   getCliente,
@@ -138,8 +136,8 @@ export async function emitirPago(input: NuevoPagoInput, empresa: Emisor): Promis
   pago.estado = "sellada";
 
   const xmlSellado = xmlPagoCompleto(comprobante, pago, agregados);
-  ensureDirs();
-  const xmlPath = path.join(CFDI_DIR, `rep-${pago.id}.xml`);
+  const xmlPath = idEmitido("pago", pago.id);
+  const nombreXml = `rep-${pago.id}.xml`;
 
   // Timbrado
   const pac = await getConfigPac(empresa.despachoId);
@@ -152,11 +150,11 @@ export async function emitirPago(input: NuevoPagoInput, empresa: Emisor): Promis
     pago.rfcProvCertif = timbre.rfcProvCertif;
     pago.demo = timbre.demo;
     pago.estado = "timbrada";
-    fs.writeFileSync(xmlPath, timbre.xmlTimbrado, "utf8");
+    await guardarArchivo(xmlPath, "emitido", "application/xml", nombreXml, Buffer.from(timbre.xmlTimbrado, "utf8"), empresa.id);
   } catch (e) {
     pago.estado = "error";
     pago.errorMsg = e instanceof Error ? e.message : "Error al timbrar";
-    fs.writeFileSync(xmlPath, xmlSellado, "utf8");
+    await guardarArchivo(xmlPath, "emitido", "application/xml", nombreXml, Buffer.from(xmlSellado, "utf8"), empresa.id);
   }
   pago.xmlPath = xmlPath;
 

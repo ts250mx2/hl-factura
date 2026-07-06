@@ -1,4 +1,4 @@
-import fs from "fs";
+import { cargarXmlsCfdi } from "../archivos";
 import { XMLParser } from "fast-xml-parser";
 import type { Emisor, MetodoIsr, PanelFiscal, TipoImpuesto } from "../types";
 import { listarFacturas, listarPagosRep, listarBoveda, getFactura } from "../repos";
@@ -129,11 +129,13 @@ export async function calcularPanelFiscal(empresa: Emisor, anio: string, mes: st
   const recibidas = (await listarBoveda([empresa.id], { tipo: "recibida", limite: 1000 })).filter(
     (c) => enPeriodo(c.fecha) && c.estatusSat === "vigente" && (c.tipoComprobante ?? "I") === "I" && c.metodoPago !== "PPD",
   );
+  const xmlsGastos = await cargarXmlsCfdi(empresa.id, recibidas);
   for (const c of recibidas) {
     let analizado: AnalisisGasto | null = null;
-    if (c.xmlPath && fs.existsSync(c.xmlPath)) {
+    const xml = xmlsGastos.get(c.uuid);
+    if (xml) {
       try {
-        analizado = analizarGastoXml(fs.readFileSync(c.xmlPath, "utf8"));
+        analizado = analizarGastoXml(xml);
       } catch {
         analizado = null;
       }

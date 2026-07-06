@@ -1,7 +1,4 @@
-import fs from "fs";
-import path from "path";
 import { XMLParser } from "fast-xml-parser";
-import { DATA_DIR, ensureDirs } from "../db";
 import {
   upsertCfdiDescargado,
   getCfdiDescargado,
@@ -10,15 +7,14 @@ import {
   buscarEfos,
   guardarDescarga,
 } from "../repos";
+import { guardarArchivo, idCfdi } from "../archivos";
 import { situacionBloquea } from "./efos";
 import { leerPaquete } from "./descarga";
 import type { CfdiDescargado, Emisor, SolicitudDescarga } from "../types";
 
 // Ingesta de CFDI a la bóveda: cada XML descargado del SAT (o importado a mano)
-// se analiza, se guarda en disco, se registra en la base y pasa por el motor de
+// se analiza, se guarda en la base de datos, se registra y pasa por el motor de
 // validación fiscal (EFOS 69-B y requisitos de deducción).
-
-export const BOVEDA_DIR = path.join(DATA_DIR, "boveda");
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -115,11 +111,8 @@ export async function ingerirXml(
 ): Promise<ResultadoIngesta> {
   const datos = parseCfdiBasico(xml);
 
-  ensureDirs();
-  const dir = path.join(BOVEDA_DIR, empresa.id);
-  fs.mkdirSync(dir, { recursive: true });
-  const xmlPath = path.join(dir, `${datos.uuid}.xml`);
-  fs.writeFileSync(xmlPath, xml, "utf8");
+  await guardarArchivo(idCfdi(empresa.id, datos.uuid), "cfdi", "application/xml", `${datos.uuid}.xml`, Buffer.from(xml, "utf8"), empresa.id);
+  const xmlPath = idCfdi(empresa.id, datos.uuid);
 
   const existente = await getCfdiDescargado(datos.uuid, empresa.id);
 
@@ -258,7 +251,7 @@ export async function ingerirSolicitud(
   let errores = 0;
 
   for (const paquete of solicitud.paquetes) {
-    if (!paquete.zipPath || !fs.existsSync(paquete.zipPath)) continue;
+    if (!paquete.zipPath) continue;
     const contenido = await leerPaquete(paquete.zipPath, solicitud.formato);
     for (const archivo of contenido.archivos) {
       if (!archivo.contenido) continue;

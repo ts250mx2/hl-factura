@@ -1,4 +1,4 @@
-import fs from "fs";
+import { cargarXmlsCfdi } from "../archivos";
 import type { Emisor, MetodoIsr } from "../types";
 import { listarFacturas, listarPagosRep, listarBoveda, getFactura } from "../repos";
 import { round2 } from "../sat/importes";
@@ -135,10 +135,12 @@ export async function calcularAnual(empresa: Emisor, anio: string, ajustes: Ajus
   const recibidas = (await listarBoveda([empresa.id], { tipo: "recibida", limite: 5000 })).filter(
     (c) => delAnio(c.fecha) && c.estatusSat === "vigente" && c.deducible === "ok" && (c.tipoComprobante ?? "I") === "I" && c.metodoPago !== "PPD",
   );
+  const xmlsGastos = await cargarXmlsCfdi(empresa.id, recibidas);
   for (const c of recibidas) {
-    if (c.xmlPath && fs.existsSync(c.xmlPath)) {
+    const xml = xmlsGastos.get(c.uuid);
+    if (xml) {
       try {
-        const m = parseMontosCfdi(fs.readFileSync(c.xmlPath, "utf8"));
+        const m = parseMontosCfdi(xml);
         deduccionesGastos = round2(deduccionesGastos + (m.subTotal - m.descuento));
         ivaAcreditable = round2(ivaAcreditable + m.traslados);
         continue;

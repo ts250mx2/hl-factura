@@ -1,8 +1,6 @@
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { CFDI_DIR, ensureDirs } from "../db";
+import { guardarArchivo, leerBinario, idEmitido } from "../archivos";
 import { getConfigPac, getConfigSmtp } from "../repos";
 import type { Emisor, ConfigSmtp } from "../types";
 import { parseCertificado, sellarCadena, verificarSello } from "../sat/certificados";
@@ -45,7 +43,6 @@ export async function timbrarNomina(
   const { cer: cerBuffer, key: keyBuffer } = bytesCertificado(empresa, "csd");
   const password = decryptSecret(empresa.csd.passwordEnc);
   const cert = parseCertificado(cerBuffer);
-  ensureDirs();
 
   const resultado: ResultadoCorrida = { timbrados: 0, omitidos: 0, errores: [], recibos: [] };
 
@@ -93,7 +90,8 @@ export async function timbrarNomina(
       recibo.noCertificado = cert.noCertificado;
 
       const xmlSellado = xmlNominaCompleto(comprobante, datos);
-      const xmlPath = path.join(CFDI_DIR, `nom-${recibo.id}.xml`);
+      const xmlPath = idEmitido("recibo", recibo.id);
+      const nombreXml = `nom-${recibo.id}.xml`;
 
       try {
         const timbre = await timbrar(xmlSellado, pac);
@@ -101,12 +99,12 @@ export async function timbrarNomina(
         recibo.fechaTimbrado = timbre.fechaTimbrado;
         recibo.demo = timbre.demo;
         recibo.estado = "timbrada";
-        fs.writeFileSync(xmlPath, timbre.xmlTimbrado, "utf8");
+        await guardarArchivo(xmlPath, "emitido", "application/xml", nombreXml, Buffer.from(timbre.xmlTimbrado, "utf8"), empresa.id);
         resultado.timbrados++;
       } catch (e) {
         recibo.estado = "error";
         recibo.errorMsg = e instanceof Error ? e.message : "Error al timbrar";
-        fs.writeFileSync(xmlPath, xmlSellado, "utf8");
+        await guardarArchivo(xmlPath, "emitido", "application/xml", nombreXml, Buffer.from(xmlSellado, "utf8"), empresa.id);
         resultado.errores.push({ empleado: empleado.nombre, error: recibo.errorMsg });
       }
       recibo.xmlPath = xmlPath;
@@ -138,7 +136,9 @@ export async function enviarRecibos(
   const errores: string[] = [];
 
   for (const recibo of recibos) {
-    if (recibo.estado !== "timbrada" || !recibo.xmlPath || !fs.existsSync(recibo.xmlPath)) continue;
+    if (recibo.estado !== "timbrada" || !recibo.xmlPath) continue;
+    const xmlRecibo = await leerBinario(idEmitido("recibo", recibo.id), recibo.xmlPath);
+    if (!xmlRecibo) continue;
     const empleado = await getEmpleado(recibo.empleadoId);
     if (!empleado?.email) {
       sinCorreo++;
@@ -161,7 +161,7 @@ export async function enviarRecibos(
             </table>
             <p style="font-size:11px;color:#94a3b8">Folio fiscal: ${recibo.uuid ?? ""} · ${empresa.nombre} (${empresa.rfc})</p>
           </div>`,
-        attachments: [{ filename: `recibo-${recibo.periodoInicio}.xml`, path: recibo.xmlPath }],
+        attachments: [{ filename: `recibo-${recibo.periodoInicio}.xml`, content: xmlRecibo }],
       });
       recibo.enviadoEl = new Date().toISOString();
       await guardarRecibo(recibo);

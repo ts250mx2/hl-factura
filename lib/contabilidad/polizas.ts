@@ -1,4 +1,4 @@
-import fs from "fs";
+import { cargarXmlsCfdi } from "../archivos";
 import { XMLParser } from "fast-xml-parser";
 import type { Emisor, Factura, MovimientoPoliza, PagoRep, TipoPoliza } from "../types";
 import { listarFacturas, listarPagosRep, listarBoveda } from "../repos";
@@ -198,12 +198,14 @@ export async function generarPolizasPeriodo(
   const recibidas = (await listarBoveda([empresa.id], { tipo: "recibida", limite: 1000 })).filter(
     (c) => enPeriodo(c.fecha) && c.estatusSat === "vigente" && (c.tipoComprobante ?? "I") === "I",
   );
+  const xmlsGastos = await cargarXmlsCfdi(empresa.id, recibidas);
   for (const c of recibidas) {
     const fecha = c.fecha.slice(0, 10);
     let montos: MontosCfdi = { subTotal: c.total, descuento: 0, traslados: 0, retenciones: 0, total: c.total };
-    if (c.xmlPath && fs.existsSync(c.xmlPath)) {
+    const xml = xmlsGastos.get(c.uuid);
+    if (xml) {
       try {
-        montos = parseMontosCfdi(fs.readFileSync(c.xmlPath, "utf8"));
+        montos = parseMontosCfdi(xml);
       } catch {
         /* solo metadata utilizable */
       }

@@ -1,6 +1,4 @@
-import fs from "fs";
-import path from "path";
-import { CFDI_DIR, ensureDirs } from "./db";
+import { guardarArchivo, idEmitido } from "./archivos";
 import { genId, getCliente, guardarFactura, incrementarFolio, getConfigPac } from "./repos";
 import type { ConceptoFactura, ConfigPac, Emisor, Factura } from "./types";
 import { calcularConcepto, calcularTotales, validarFactura, sellarFactura } from "./sat/facturacion";
@@ -147,8 +145,8 @@ export async function emitirFactura(input: NuevaFacturaInput, empresa: Emisor): 
   factura.noCertificado = sellado.noCertificado;
   factura.estado = "sellada";
 
-  ensureDirs();
-  const xmlPath = path.join(CFDI_DIR, `${factura.id}.xml`);
+  const xmlPath = idEmitido("factura", factura.id);
+  const nombreXml = `${factura.id}.xml`;
 
   // Timbrado (PAC real o demo según configuración del despacho)
   try {
@@ -160,11 +158,11 @@ export async function emitirFactura(input: NuevaFacturaInput, empresa: Emisor): 
     factura.rfcProvCertif = timbre.rfcProvCertif;
     factura.demo = timbre.demo;
     factura.estado = "timbrada";
-    fs.writeFileSync(xmlPath, timbre.xmlTimbrado, "utf8");
+    await guardarArchivo(xmlPath, "emitido", "application/xml", nombreXml, Buffer.from(timbre.xmlTimbrado, "utf8"), empresa.id);
   } catch (e) {
     factura.estado = "error";
     factura.errorMsg = e instanceof Error ? e.message : "Error al timbrar";
-    fs.writeFileSync(xmlPath, sellado.xml, "utf8");
+    await guardarArchivo(xmlPath, "emitido", "application/xml", nombreXml, Buffer.from(sellado.xml, "utf8"), empresa.id);
   }
   factura.xmlPath = xmlPath;
 
@@ -198,8 +196,8 @@ export async function reintentarTimbrado(factura: Factura, empresa: Emisor): Pro
   factura.estado = "timbrada";
   factura.errorMsg = undefined;
 
-  const xmlPath = factura.xmlPath || path.join(CFDI_DIR, `${factura.id}.xml`);
-  fs.writeFileSync(xmlPath, timbre.xmlTimbrado, "utf8");
+  const xmlPath = idEmitido("factura", factura.id);
+  await guardarArchivo(xmlPath, "emitido", "application/xml", `${factura.id}.xml`, Buffer.from(timbre.xmlTimbrado, "utf8"), empresa.id);
   factura.xmlPath = xmlPath;
 
   await guardarFactura(factura);

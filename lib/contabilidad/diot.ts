@@ -1,4 +1,4 @@
-import fs from "fs";
+import { cargarXmlsCfdi } from "../archivos";
 import { XMLParser } from "fast-xml-parser";
 import { listarBoveda } from "../repos";
 import { round2 } from "../sat/importes";
@@ -111,15 +111,17 @@ export async function calcularDiot(empresaId: string, anio: string, mes: string)
 
   const mapa = new Map<string, RenglonDiot>();
   let sinXml = 0;
+  const xmls = await cargarXmlsCfdi(empresaId, recibidas);
 
   for (const c of recibidas) {
-    if (!c.xmlPath || !fs.existsSync(c.xmlPath)) {
+    const xml = xmls.get(c.uuid);
+    if (!xml) {
       sinXml++;
       continue;
     }
     let d: Desglose;
     try {
-      d = desglosarCfdi(fs.readFileSync(c.xmlPath, "utf8"));
+      d = desglosarCfdi(xml);
     } catch {
       sinXml++;
       continue;

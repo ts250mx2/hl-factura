@@ -3,12 +3,20 @@ import path from "path";
 import crypto from "crypto";
 import { DATA_DIR, ensureDirs } from "./db";
 
-// Las contraseñas de las llaves privadas nunca se guardan en claro:
-// se cifran con AES-256-GCM usando una llave local generada en el primer arranque.
+// Las contraseñas de las llaves privadas nunca se guardan en claro: se cifran
+// con AES-256-GCM. La llave se toma de la variable de entorno APP_SECRET (para
+// que local y producción compartan la misma y los datos cifrados en la base de
+// datos sean portables entre entornos). Si no está definida, se usa una llave
+// local en disco (comportamiento de instalación única).
 
 const SECRET_PATH = path.join(DATA_DIR, ".secret");
 
 function getKey(): Buffer {
+  const env = (process.env.APP_SECRET || process.env.SECRET_KEY || "").trim();
+  if (env) {
+    // 64 hex = 32 bytes exactos; cualquier otra cadena se deriva con SHA-256.
+    return /^[0-9a-fA-F]{64}$/.test(env) ? Buffer.from(env, "hex") : crypto.createHash("sha256").update(env).digest();
+  }
   ensureDirs();
   if (!fs.existsSync(SECRET_PATH)) {
     fs.writeFileSync(SECRET_PATH, crypto.randomBytes(32).toString("hex"), "utf8");

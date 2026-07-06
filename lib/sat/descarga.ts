@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import {
   Fiel,
   FielRequestBuilder,
@@ -15,7 +13,7 @@ import {
 import type { Emisor } from "../types";
 import { decryptSecret } from "../secret";
 import { bytesCertificado } from "./cert-bytes";
-import { DESCARGAS_DIR, ensureDirs } from "../db";
+import { guardarArchivo, leerBinario, idPaquete } from "../archivos";
 
 // Descarga masiva de CFDI directamente del SAT usando la FIEL (e.firma) del
 // emisor. Flujo oficial del SAT: solicitar → verificar → descargar paquetes.
@@ -149,7 +147,6 @@ export async function verificarDescarga(emisor: Emisor, requestId: string): Prom
 }
 
 export async function descargarPaquete(emisor: Emisor, packageId: string): Promise<string> {
-  ensureDirs();
   const service = crearServicio(emisor);
   let download;
   try {
@@ -160,9 +157,9 @@ export async function descargarPaquete(emisor: Emisor, packageId: string): Promi
   if (!download.getStatus().isAccepted()) {
     throw new Error(`No se pudo descargar el paquete: ${download.getStatus().getMessage()}`);
   }
-  const zipPath = path.join(DESCARGAS_DIR, `${packageId}.zip`);
-  fs.writeFileSync(zipPath, Buffer.from(download.getPackageContent(), "base64"));
-  return zipPath;
+  const zip = Buffer.from(download.getPackageContent(), "base64");
+  await guardarArchivo(idPaquete(packageId), "paquete", "application/zip", `${packageId}.zip`, zip, emisor.id);
+  return idPaquete(packageId);
 }
 
 export interface ContenidoPaquete {
@@ -171,9 +168,14 @@ export interface ContenidoPaquete {
   metadata: Record<string, string>[];
 }
 
-export async function leerPaquete(zipPath: string, formato: "xml" | "metadata"): Promise<ContenidoPaquete> {
+export async function leerPaquete(refZip: string, formato: "xml" | "metadata"): Promise<ContenidoPaquete> {
+  // refZip es la clave del paquete en la base de datos ("paquete:<id>") o, para
+  // instalaciones previas, una ruta en disco; leerBinario resuelve ambos.
+  const buf = await leerBinario(refZip, refZip);
+  if (!buf) return { tipo: formato === "xml" ? "cfdi" : "metadata", archivos: [], metadata: [] };
+  const contents = buf.toString("binary");
   if (formato === "xml") {
-    const reader = await CfdiPackageReader.createFromFile(zipPath);
+    const reader = await CfdiPackageReader.createFromContents(contents);
     const archivos: { nombre: string; contenido: string }[] = [];
     for await (const map of reader.cfdis()) {
       for (const [nombre, contenido] of map) {
@@ -182,7 +184,7 @@ export async function leerPaquete(zipPath: string, formato: "xml" | "metadata"):
     }
     return { tipo: "cfdi", archivos, metadata: [] };
   }
-  const reader = await MetadataPackageReader.createFromFile(zipPath);
+  const reader = await MetadataPackageReader.createFromContents(contents);
   const filas: Record<string, string>[] = [];
   for await (const item of reader.metadata()) {
     filas.push({

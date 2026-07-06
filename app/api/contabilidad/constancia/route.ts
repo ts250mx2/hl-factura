@@ -1,8 +1,6 @@
-import fs from "fs";
-import path from "path";
 import { ok, fail } from "@/lib/api-helpers";
 import { requireCtx, authFail } from "@/lib/auth";
-import { CONSTANCIAS_DIR, ensureDirs } from "@/lib/db";
+import { guardarArchivo, idCsf } from "@/lib/archivos";
 import { parsearConstancia } from "@/lib/sat/constancia";
 import { getConfigFiscal, guardarConfigFiscal } from "@/lib/contabilidad/repos";
 
@@ -26,12 +24,10 @@ export async function POST(req: Request) {
       return fail("No se pudo leer el PDF. Verifica que sea la CSF oficial y no una imagen escaneada.");
     }
 
-    ensureDirs();
-    const destino = path.join(CONSTANCIAS_DIR, `${ctx.empresaActiva.id}.pdf`);
-    fs.writeFileSync(destino, buf);
+    await guardarArchivo(idCsf(ctx.empresaActiva.id), "csf", "application/pdf", `${ctx.empresaActiva.rfc}.pdf`, buf, ctx.empresaActiva.id);
 
     const cfg = await getConfigFiscal(ctx.empresaActiva.id);
-    perfil.csfArchivo = destino;
+    perfil.csfArchivo = idCsf(ctx.empresaActiva.id);
     perfil.importadaEl = new Date().toISOString();
     perfil.fuente = "csf";
     await guardarConfigFiscal(ctx.empresaActiva.id, { ...cfg, perfil });

@@ -1,4 +1,3 @@
-import fs from "fs";
 import { ok, fail } from "@/lib/api-helpers";
 import { requireCtx, requireEmpresa, authFail } from "@/lib/auth";
 import { getDescarga } from "@/lib/repos";
@@ -18,7 +17,7 @@ export async function GET(_req: Request, { params }: Params) {
     const archivos: { nombre: string; contenido?: string }[] = [];
     const metadata: Record<string, string>[] = [];
     for (const paquete of solicitud.paquetes) {
-      if (!paquete.zipPath || !fs.existsSync(paquete.zipPath)) continue;
+      if (!paquete.zipPath) continue;
       const contenido = await leerPaquete(paquete.zipPath, solicitud.formato);
       archivos.push(...contenido.archivos);
       metadata.push(...contenido.metadata);

@@ -235,6 +235,17 @@ const DDL: string[] = [
     empresaId CHAR(36) NOT NULL PRIMARY KEY,
     datosJson TEXT NOT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS archivos (
+    id VARCHAR(140) NOT NULL PRIMARY KEY,
+    empresaId CHAR(36) NULL,
+    categoria VARCHAR(20) NOT NULL,
+    mime VARCHAR(100) NOT NULL,
+    nombre VARCHAR(255) NULL,
+    contenido LONGBLOB NOT NULL,
+    bytes INT NOT NULL,
+    creadoEl VARCHAR(32) NOT NULL,
+    KEY idx_empresa (empresaId, categoria)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS empleados (
     id CHAR(36) NOT NULL PRIMARY KEY,
     empresaId CHAR(36) NOT NULL,

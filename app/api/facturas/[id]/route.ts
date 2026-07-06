@@ -1,7 +1,7 @@
-import fs from "fs";
 import { ok, fail } from "@/lib/api-helpers";
 import { requireCtx, requireEmpresa, authFail } from "@/lib/auth";
 import { getFactura, eliminarFactura, getCliente } from "@/lib/repos";
+import { leerXml, eliminarArchivo, idEmitido } from "@/lib/archivos";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -12,10 +12,7 @@ export async function GET(_req: Request, { params }: Params) {
     const factura = await getFactura(id);
     if (!factura) return fail("Factura no encontrada", 404);
     const empresa = await requireEmpresa(ctx, factura.emisorId);
-    let xml: string | null = null;
-    if (factura.xmlPath && fs.existsSync(factura.xmlPath)) {
-      xml = fs.readFileSync(factura.xmlPath, "utf8");
-    }
+    const xml = await leerXml(idEmitido("factura", factura.id), factura.xmlPath);
     const cliente = await getCliente(factura.clienteId);
     return ok({
       factura,
@@ -52,7 +49,7 @@ export async function DELETE(_req: Request, { params }: Params) {
       return fail("Una factura timbrada no se elimina: debe cancelarse ante el SAT.");
     }
     await eliminarFactura(id);
-    if (factura.xmlPath && fs.existsSync(factura.xmlPath)) fs.unlinkSync(factura.xmlPath);
+    await eliminarArchivo(idEmitido("factura", factura.id));
     return ok({ eliminado: true });
   } catch (e) {
     return authFail(e);

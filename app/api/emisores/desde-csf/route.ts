@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import { ok, fail, failMany } from "@/lib/api-helpers";
 import { requireCtx, authFail } from "@/lib/auth";
 import { listarEmpresas, insertarEmpresa, genId } from "@/lib/repos";
@@ -7,7 +5,7 @@ import { validarRfc, esPersonaMoral } from "@/lib/sat/rfc";
 import { REGIMENES_FISCALES } from "@/lib/sat/catalogos";
 import { parsearConstancia } from "@/lib/sat/constancia";
 import { getConfigFiscal, guardarConfigFiscal } from "@/lib/contabilidad/repos";
-import { CONSTANCIAS_DIR, ensureDirs } from "@/lib/db";
+import { guardarArchivo, idCsf } from "@/lib/archivos";
 import type { Emisor } from "@/lib/types";
 
 const COLORES = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
@@ -75,10 +73,8 @@ export async function POST(req: Request) {
 
     // Guarda el PDF y el perfil fiscal (régimen + obligaciones) de la nueva empresa.
     try {
-      ensureDirs();
-      const destino = path.join(CONSTANCIAS_DIR, `${empresa.id}.pdf`);
-      fs.writeFileSync(destino, buf);
-      perfil.csfArchivo = destino;
+      await guardarArchivo(idCsf(empresa.id), "csf", "application/pdf", `${empresa.rfc}.pdf`, buf, empresa.id);
+      perfil.csfArchivo = idCsf(empresa.id);
       perfil.importadaEl = new Date().toISOString();
       perfil.fuente = "csf";
       const cfg = await getConfigFiscal(empresa.id);

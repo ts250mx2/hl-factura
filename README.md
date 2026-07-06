@@ -156,5 +156,6 @@ Después del primer despliegue:
 ## Notas
 
 - El timbrado real solo puede hacerlo un PAC autorizado; el SAT no timbra directo.
-- Los certificados (CSD/FIEL) viven en la base de datos MySQL; los XMLs y PDFs generados/descargados se guardan en `data/` del servidor donde corre la app. La información estructurada vive en MySQL.
-- Para reiniciar desde cero, vacía las tablas de la base `HLPortalContable` y borra la carpeta `data/`.
+- **Todo vive en MySQL**: datos estructurados y también los archivos (certificados CSD/FIEL, XMLs emitidos y descargados, PDFs de CSF y paquetes ZIP de descarga masiva se guardan en la tabla `archivos`). Así la app no depende de archivos físicos y el mismo dato sirve en local y en producción. Datos de instalaciones previas en `data/` se migran solos a la BD la primera vez que se usan.
+- **`APP_SECRET`** (variable de entorno): llave AES con la que se cifran las contraseñas de las llaves privadas. Debe ser **la misma en local y en producción** para que los certificados guardados en la BD compartida se puedan usar en ambos entornos. Usa 64 caracteres hexadecimales (`openssl rand -hex 32`) o el contenido del antiguo `data/.secret`. Si no se define, se usa una llave local en disco (solo sirve para instalación única).
+- Para reiniciar desde cero, vacía las tablas de la base `HLPortalContable`.
