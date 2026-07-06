@@ -1,8 +1,8 @@
-import fs from "fs";
 import forge from "node-forge";
 import type { Emisor } from "../types";
 import { decryptSecret } from "../secret";
 import { parseLlavePrivada } from "./certificados";
+import { bytesCertificado } from "./cert-bytes";
 
 // BETA — Descarga de la Constancia de Situación Fiscal autenticando en el portal
 // del SAT con la e.firma (FIEL). El SAT no expone un API oficial para la CSF, así
@@ -110,9 +110,9 @@ function enlaceEfirma(html: string, base: string): string | null {
 }
 
 /** Construye el token firmado igual que el applet JS del SAT (RSA-SHA1). */
-function construirToken(fiel: NonNullable<Emisor["fiel"]>, tokenuuid: string): string {
+function construirToken(fiel: NonNullable<Emisor["fiel"]>, tokenuuid: string, keyBuf: Buffer): string {
   const co = `${tokenuuid}|${fiel.rfc}|${fiel.noCertificado}`;
-  const priv = parseLlavePrivada(fs.readFileSync(fiel.keyPath), decryptSecret(fiel.passwordEnc));
+  const priv = parseLlavePrivada(keyBuf, decryptSecret(fiel.passwordEnc));
   const md = forge.md.sha1.create();
   md.update(co, "utf8");
   const firma = forge.util.encode64(priv.sign(md));
@@ -163,8 +163,9 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
     const accionUrl = new URL(accion, salto.url).toString();
     if (!tokenuuid) return { ok: false, pasos, error: "El SAT no entregó el reto (tokenuuid)." };
 
-    // 4) Firmar el reto con la FIEL y armar el token.
-    const token = construirToken(fiel, tokenuuid);
+    // 4) Firmar el reto con la FIEL (desde la base de datos) y armar el token.
+    const { key } = bytesCertificado(emisor, "fiel");
+    const token = construirToken(fiel, tokenuuid, key);
 
     // 5) Enviar la autenticación.
     const cuerpo = new URLSearchParams({

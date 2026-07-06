@@ -1,6 +1,6 @@
 import { ok, fail } from "@/lib/api-helpers";
 import { requireCtx, requireEmpresa, authFail } from "@/lib/auth";
-import { actualizarEmpresa, eliminarEmpresa, listarFacturas } from "@/lib/repos";
+import { actualizarEmpresa, eliminarEmpresa, listarFacturas, certificadoPublico } from "@/lib/repos";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -11,8 +11,8 @@ export async function GET(_req: Request, { params }: Params) {
     const empresa = await requireEmpresa(ctx, id);
     return ok({
       ...empresa,
-      csd: empresa.csd ? { ...empresa.csd, passwordEnc: undefined } : null,
-      fiel: empresa.fiel ? { ...empresa.fiel, passwordEnc: undefined } : null,
+      csd: certificadoPublico(empresa.csd),
+      fiel: certificadoPublico(empresa.fiel),
     });
   } catch (e) {
     return authFail(e);

@@ -1,9 +1,9 @@
-import fs from "fs";
 import type { Cliente, ConceptoFactura, Emisor, Factura } from "../types";
 import type { ComprobanteCfdi, ConceptoCfdi, TrasladoCfdi, RetencionCfdi } from "./cfdi";
 import { buildCfdiXml } from "./cfdi";
 import { cadenaOriginal } from "./cadena-original";
 import { sellarCadena, verificarSello, parseCertificado } from "./certificados";
+import { bytesCertificado } from "./cert-bytes";
 import { decryptSecret } from "../secret";
 import { fmtCantidad, fmtImporte, fmtTasa, fmtTipoCambio, round2 } from "./importes";
 import { usosPermitidos, REGIMENES_FISCALES } from "./catalogos";
@@ -333,8 +333,7 @@ export interface ResultadoSellado {
 /** Genera la cadena original, sella con el CSD y produce el XML final. */
 export function sellarFactura(emisor: Emisor, cliente: Cliente, factura: Factura): ResultadoSellado {
   if (!emisor.csd) throw new Error("El emisor no tiene CSD cargado.");
-  const cerBuffer = fs.readFileSync(emisor.csd.cerPath);
-  const keyBuffer = fs.readFileSync(emisor.csd.keyPath);
+  const { cer: cerBuffer, key: keyBuffer } = bytesCertificado(emisor, "csd");
   const password = decryptSecret(emisor.csd.passwordEnc);
   const cert = parseCertificado(cerBuffer);
 

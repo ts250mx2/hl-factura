@@ -1,6 +1,6 @@
 import { ok, fail, failMany } from "@/lib/api-helpers";
 import { requireCtx, authFail } from "@/lib/auth";
-import { listarEmpresas, insertarEmpresa, genId } from "@/lib/repos";
+import { listarEmpresas, insertarEmpresa, genId, certificadoPublico } from "@/lib/repos";
 import { validarRfc, esPersonaMoral } from "@/lib/sat/rfc";
 import { REGIMENES_FISCALES } from "@/lib/sat/catalogos";
 import type { Emisor } from "@/lib/types";
@@ -10,8 +10,8 @@ const COLORES = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6
 function sinSecretos(e: Emisor) {
   return {
     ...e,
-    csd: e.csd ? { ...e.csd, passwordEnc: undefined } : null,
-    fiel: e.fiel ? { ...e.fiel, passwordEnc: undefined } : null,
+    csd: certificadoPublico(e.csd),
+    fiel: certificadoPublico(e.fiel),
   };
 }
 

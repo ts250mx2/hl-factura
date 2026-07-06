@@ -1,9 +1,9 @@
 import crypto from "crypto";
-import fs from "fs";
 import type { ConfigPac, Emisor } from "../types";
 import { insertarComplemento, escapeXml } from "./cfdi";
 import { fechaCfdi } from "./importes";
 import { decryptSecret } from "../secret";
+import { bytesCertificado } from "./cert-bytes";
 
 // Timbrado del CFDI. El timbrado real SOLO puede hacerlo un PAC autorizado por el
 // SAT; este módulo implementa:
@@ -154,12 +154,13 @@ export async function cancelar(
   const { emisor } = datos;
   if (!emisor.csd) throw new Error("El emisor no tiene CSD cargado para firmar la cancelación.");
   const token = await tokenSw(config);
+  const { cer, key } = bytesCertificado(emisor, "csd");
   const body: Record<string, string> = {
     uuid: datos.uuid,
     motivo: datos.motivo,
     rfc: emisor.rfc,
-    b64Cer: fs.readFileSync(emisor.csd.cerPath).toString("base64"),
-    b64Key: fs.readFileSync(emisor.csd.keyPath).toString("base64"),
+    b64Cer: cer.toString("base64"),
+    b64Key: key.toString("base64"),
     password: decryptSecret(emisor.csd.passwordEnc),
   };
   if (datos.motivo === "01") {

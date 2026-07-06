@@ -24,8 +24,13 @@ export interface Usuario {
 
 export interface CertificadoInfo {
   tipo: "CSD" | "FIEL";
-  cerPath: string;
-  keyPath: string;
+  /** Contenido del .cer en base64, almacenado en la base de datos (sin archivo físico). */
+  cerB64?: string;
+  /** Contenido del .key en base64, almacenado en la base de datos (sin archivo físico). */
+  keyB64?: string;
+  /** Rutas en disco: solo instalaciones previas; se migran a la BD al usarse. */
+  cerPath?: string;
+  keyPath?: string;
   passwordEnc: string; // contraseña de la llave privada, cifrada AES-256-GCM
   noCertificado: string; // serial de 20 dígitos
   rfc: string;

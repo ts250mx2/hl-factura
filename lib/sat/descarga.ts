@@ -14,6 +14,7 @@ import {
 } from "@nodecfdi/sat-ws-descarga-masiva";
 import type { Emisor } from "../types";
 import { decryptSecret } from "../secret";
+import { bytesCertificado } from "./cert-bytes";
 import { DESCARGAS_DIR, ensureDirs } from "../db";
 
 // Descarga masiva de CFDI directamente del SAT usando la FIEL (e.firma) del
@@ -23,9 +24,10 @@ function crearServicio(emisor: Emisor): Service {
   if (!emisor.fiel) {
     throw new Error("Este emisor no tiene FIEL (e.firma) cargada. Súbela en la sección Emisores.");
   }
+  const { cer, key } = bytesCertificado(emisor, "fiel");
   const fiel = Fiel.create(
-    fs.readFileSync(emisor.fiel.cerPath, "binary"),
-    fs.readFileSync(emisor.fiel.keyPath, "binary"),
+    cer.toString("binary"),
+    key.toString("binary"),
     decryptSecret(emisor.fiel.passwordEnc),
   );
   if (!fiel.isValid()) {

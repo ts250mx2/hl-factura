@@ -14,6 +14,7 @@ import type { Emisor, Factura, PagoRep, DoctoPago } from "./types";
 import { ErrorValidacion } from "./emision";
 import { round2, fechaCfdi } from "./sat/importes";
 import { parseCertificado, sellarCadena, verificarSello } from "./sat/certificados";
+import { bytesCertificado } from "./sat/cert-bytes";
 import { decryptSecret } from "./secret";
 import {
   construirComprobantePago,
@@ -117,8 +118,7 @@ export async function emitirPago(input: NuevoPagoInput, empresa: Emisor): Promis
   };
 
   // Sellado
-  const cerBuffer = fs.readFileSync(empresa.csd.cerPath);
-  const keyBuffer = fs.readFileSync(empresa.csd.keyPath);
+  const { cer: cerBuffer, key: keyBuffer } = bytesCertificado(empresa, "csd");
   const password = decryptSecret(empresa.csd.passwordEnc);
   const cert = parseCertificado(cerBuffer);
 

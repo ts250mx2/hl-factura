@@ -3,6 +3,7 @@ import type { RowDataPacket } from "mysql2/promise";
 import { db } from "./sql";
 import type {
   Alerta,
+  CertificadoInfo,
   CfdiDescargado,
   Cliente,
   ConfigPac,
@@ -195,6 +196,13 @@ function mapEmpresa(r: Row): Emisor {
     fiel: r.fielJson ? JSON.parse(String(r.fielJson)) : null,
     creadoEl: String(r.creadoEl),
   };
+}
+
+/** Versión del certificado segura para enviar al cliente: sin la contraseña ni
+ *  los bytes de las llaves (el .key jamás debe salir al navegador). */
+export function certificadoPublico(info: CertificadoInfo | null | undefined) {
+  if (!info) return null;
+  return { ...info, passwordEnc: undefined, cerB64: undefined, keyB64: undefined, cerPath: undefined, keyPath: undefined };
 }
 
 export async function listarEmpresas(despachoId: string): Promise<Emisor[]> {

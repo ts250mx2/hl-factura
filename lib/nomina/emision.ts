@@ -6,6 +6,7 @@ import { CFDI_DIR, ensureDirs } from "../db";
 import { getConfigPac, getConfigSmtp } from "../repos";
 import type { Emisor, ConfigSmtp } from "../types";
 import { parseCertificado, sellarCadena, verificarSello } from "../sat/certificados";
+import { bytesCertificado } from "../sat/cert-bytes";
 import { decryptSecret } from "../secret";
 import { fechaCfdi } from "../sat/importes";
 import { timbrar } from "../sat/timbrado";
@@ -41,8 +42,7 @@ export async function timbrarNomina(
   const config = await getConfigNomina(empresa.id);
   const pac = await getConfigPac(empresa.despachoId);
 
-  const cerBuffer = fs.readFileSync(empresa.csd.cerPath);
-  const keyBuffer = fs.readFileSync(empresa.csd.keyPath);
+  const { cer: cerBuffer, key: keyBuffer } = bytesCertificado(empresa, "csd");
   const password = decryptSecret(empresa.csd.passwordEnc);
   const cert = parseCertificado(cerBuffer);
   ensureDirs();

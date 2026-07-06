@@ -1,9 +1,6 @@
-import fs from "fs";
-import path from "path";
 import { ok, fail } from "@/lib/api-helpers";
 import { requireCtx, requireEmpresa, authFail } from "@/lib/auth";
-import { actualizarEmpresa } from "@/lib/repos";
-import { CERTS_DIR, ensureDirs } from "@/lib/db";
+import { actualizarEmpresa, certificadoPublico } from "@/lib/repos";
 import { parseCertificado, llaveCorrespondeACertificado } from "@/lib/sat/certificados";
 import { encryptSecret } from "@/lib/secret";
 import type { CertificadoInfo } from "@/lib/types";
@@ -59,18 +56,12 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
-    ensureDirs();
-    const dir = path.join(CERTS_DIR, empresa.id);
-    fs.mkdirSync(dir, { recursive: true });
-    const cerPath = path.join(dir, `${tipo}.cer`);
-    const keyPath = path.join(dir, `${tipo}.key`);
-    fs.writeFileSync(cerPath, cerBuf);
-    fs.writeFileSync(keyPath, keyBuf);
-
     const info: CertificadoInfo = {
       tipo: tipo === "csd" ? "CSD" : "FIEL",
-      cerPath,
-      keyPath,
+      // Se almacenan en la base de datos (base64), sin archivos físicos, para
+      // poder trabajar en local y en producción con los mismos datos.
+      cerB64: cerBuf.toString("base64"),
+      keyB64: keyBuf.toString("base64"),
       passwordEnc: encryptSecret(password),
       noCertificado: datos.noCertificado,
       rfc: datos.rfc,
@@ -87,7 +78,7 @@ export async function POST(req: Request, { params }: Params) {
     else empresa.fiel = info;
     await actualizarEmpresa(empresa);
 
-    return ok({ certificado: { ...info, passwordEnc: undefined }, advertencias });
+    return ok({ certificado: certificadoPublico(info), advertencias });
   } catch (e) {
     return authFail(e);
   }
