@@ -827,6 +827,9 @@ export default function ContabilidadPage() {
                       </p>
                     </div>
                     <div className="flex gap-2">
+                      <a href={`/contabilidad/diot/imprimir?anio=${anio}&mes=${mes}`} target="_blank" rel="noopener noreferrer">
+                        <Button variant="secondary" className="px-3 py-2 text-xs"><Printer className="size-3.5" /> PDF</Button>
+                      </a>
                       <a href={`/api/contabilidad/diot?${periodo}&formato=csv`}>
                         <Button variant="secondary" className="px-3 py-2 text-xs"><FileDown className="size-3.5" /> CSV (revisión)</Button>
                       </a>
@@ -915,9 +918,9 @@ export default function ContabilidadPage() {
                         <h2 className="text-sm font-bold">Declaración anual pre-llenada · ejercicio {anual.anio}</h2>
                         <Badge color="brand">{METODO_LABEL[anual.metodo]}</Badge>
                       </div>
-                      <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => window.print()}>
-                        <Printer className="size-3.5" /> Imprimir
-                      </Button>
+                      <a href={`/contabilidad/anual/imprimir?anio=${anual.anio}&dedPersonales=${ajustes.dedPersonales}&pagosProv=${ajustes.pagosProv}&ptu=${ajustes.ptu}&perdidas=${ajustes.perdidas}`} target="_blank" rel="noopener noreferrer">
+                        <Button variant="secondary" className="px-3 py-2 text-xs"><Printer className="size-3.5" /> Exportar PDF</Button>
+                      </a>
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-2">
