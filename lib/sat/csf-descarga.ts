@@ -258,6 +258,10 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
 
     // 3) Firmar el reto con la FIEL (desde la base de datos) y colocar el token.
     const { key } = bytesCertificado(emisor, "fiel");
+    pasos.push({
+      paso: "FIEL",
+      detalle: `tipo ${fiel.tipo} · RFC ${fiel.rfc} · noCert ${fiel.noCertificado} · vence ${(fiel.validoHasta || "").slice(0, 10)} · vigente ${fiel.vigente}`,
+    });
     certform.inputs.token = construirToken(fiel, tokenuuid, key);
 
     // 4) Enviar la autenticación (el certform postea a su propia URL) y seguir
@@ -267,15 +271,34 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
 
     if (esPdf(s)) return { ok: true, pdf: s.body, rfc: fiel.rfc, pasos };
 
+    // El certform del SAT trae SIEMPRE los textos "revocada"/"no vigente" en su
+    // JavaScript (mensajes predefinidos); el error REAL lo inyecta el servidor
+    // en `var error = '...'` (vacío = sin error).
     html = texto(s);
-    if (/Certificado\s+(Revocad|Caduc|Inv[aá]lid)|no est[aá] vigente|revocada/i.test(html)) {
-      return { ok: false, pasos, error: "El SAT rechazó la e.firma (revocada, no vigente o inválida)." };
+    const certReaparece = /id="tokenuuid"/i.test(html);
+    const errorSat = (html.match(/var\s+error\s*=\s*'([^']*)'/i)?.[1] || "").trim();
+    pasos.push({
+      paso: "Resultado",
+      status: s.status,
+      detalle: `${(s.headers["content-type"] as string) || ""} · ${s.body.length} bytes · certform=${certReaparece} · error="${errorSat || "(vacío)"}"`,
+    });
+
+    if (errorSat) {
+      return { ok: false, pasos, error: `El SAT rechazó la e.firma: ${errorSat}.` };
+    }
+    if (certReaparece) {
+      return {
+        ok: false,
+        pasos,
+        error:
+          "El SAT no aceptó la autenticación con la FIEL (no reconoció la firma o el certificado). Verifica que el .cer y .key subidos sean la e.firma (no un CSD) vigente de este RFC.",
+      };
     }
     return {
       ok: false,
       pasos,
       error:
-        "La autenticación con la FIEL se envió correctamente, pero la respuesta final no fue el PDF de la CSF (falta el paso de generación dentro de la app). Comparte los pasos para afinar el último tramo.",
+        "La autenticación con la FIEL se envió, pero la respuesta final no fue el PDF de la CSF (falta el paso de generación dentro de la app). Comparte los pasos para afinar el último tramo.",
     };
   } catch (e) {
     return { ok: false, pasos, error: e instanceof Error ? e.message : String(e) };
