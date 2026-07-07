@@ -72,6 +72,12 @@ export interface Cliente {
   extranjero?: boolean;
   residenciaFiscal?: string;
   numRegIdTrib?: string;
+  // Origen del registro: "manual" (capturado en el sistema) o "descarga"
+  // (derivado automáticamente de un CFDI de la bóveda).
+  origen?: "manual" | "descarga";
+  // Relación con la empresa según los CFDI: cliente (le emito), proveedor (me
+  // emite) o ambos.
+  relacion?: "cliente" | "proveedor" | "ambos";
   creadoEl: string;
 }
 
@@ -94,6 +100,7 @@ export interface Producto {
   valorUnitario: number;
   objetoImp: string; // 01 no objeto, 02 sí objeto, 03 sí objeto no desglose
   impuestos: ImpuestosProducto;
+  origen?: "manual" | "descarga"; // "descarga" = derivado de un CFDI de la bóveda
   creadoEl: string;
 }
 
@@ -160,6 +167,9 @@ export interface Factura {
   // resultado fiscal
   estado: EstadoFactura;
   demo: boolean;
+  // "descarga" = CFDI traído de la bóveda (descarga masiva del SAT), no emitido
+  // en el sistema; es de solo lectura (sin timbrar/cancelar desde aquí).
+  origen?: "manual" | "descarga";
   uuid?: string; // folio fiscal
   fechaTimbrado?: string;
   selloCFD?: string;
@@ -305,6 +315,7 @@ export interface PagoRep {
   doctos: DoctoPago[];
   estado: EstadoFactura;
   demo: boolean;
+  origen?: "manual" | "descarga"; // "descarga" = REP traído de la bóveda del SAT
   uuid?: string;
   fechaTimbrado?: string;
   selloCFD?: string;

@@ -166,9 +166,11 @@ export default function FacturaDetallePage({ params }: { params: Promise<{ id: s
                 <Button variant="secondary" onClick={consultarSat} loading={consultando}>
                   <SearchCheck className="size-4" /> Estatus SAT
                 </Button>
-                <Button variant="danger" onClick={() => setModalCancelar(true)}>
-                  <Ban className="size-4" /> Cancelar
-                </Button>
+                {f.origen !== "descarga" && (
+                  <Button variant="danger" onClick={() => setModalCancelar(true)}>
+                    <Ban className="size-4" /> Cancelar
+                  </Button>
+                )}
               </>
             )}
             {f.estado === "error" && (
@@ -187,6 +189,7 @@ export default function FacturaDetallePage({ params }: { params: Promise<{ id: s
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Badge color={badge.color}>{badge.label}</Badge>
+        {f.origen === "descarga" && <Badge color="sky">Descargado del SAT (solo lectura)</Badge>}
         {f.demo && <Badge color="amber">TIMBRE DEMO — sin validez fiscal</Badge>}
         {f.cancelacion && (
           <Badge color="red">

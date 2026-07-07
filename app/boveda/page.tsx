@@ -49,6 +49,7 @@ export default function BovedaPage() {
   const [tipoImportar, setTipoImportar] = useState<"recibida" | "emitida">("recibida");
   const [archivos, setArchivos] = useState<FileList | null>(null);
   const [importando, setImportando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const cargar = useCallback(async () => {
     const params = new URLSearchParams();
@@ -97,6 +98,23 @@ export default function BovedaPage() {
     }
   };
 
+  const sincronizar = async () => {
+    setSincronizando(true);
+    try {
+      const r = await api<{ procesados: number; errores: number }>("/api/boveda/derivar", { method: "POST" });
+      toast(
+        "success",
+        "Bóveda sincronizada",
+        `${r.procesados} CFDI reflejados en clientes, productos, facturas y pagos.${r.errores ? ` (${r.errores} con error)` : ""}`,
+      );
+      await cargar();
+    } catch (e) {
+      toast("error", "No se pudo sincronizar", e instanceof Error ? e.message : String(e));
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
   const chips = datos?.resumen;
 
   return (
@@ -105,9 +123,14 @@ export default function BovedaPage() {
         title="Bóveda CFDI"
         subtitle="Todos los comprobantes descargados del SAT o importados, con su estatus y semáforo de deducibilidad."
         actions={
-          <Button onClick={() => setModalImportar(true)}>
-            <UploadCloud className="size-4" /> Importar XML
-          </Button>
+          <>
+            <Button variant="secondary" onClick={sincronizar} loading={sincronizando}>
+              <FileDown className="size-4" /> Sincronizar a operación
+            </Button>
+            <Button onClick={() => setModalImportar(true)}>
+              <UploadCloud className="size-4" /> Importar XML
+            </Button>
+          </>
         }
       />
 

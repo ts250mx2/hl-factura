@@ -114,6 +114,7 @@ export default function FacturasPage() {
                     <p className="text-xs font-medium text-ink-600">{f.emisorRfc}</p>
                   </div>
                   <Badge color={badge.color}>{badge.label}</Badge>
+                  {f.origen === "descarga" && <Badge color="sky">Descargado SAT</Badge>}
                   {f.demo && <Badge color="amber">DEMO</Badge>}
                   <span className="tnum w-28 shrink-0 text-right text-sm font-extrabold text-ink-900">{mxn.format(f.total)}</span>
                 </Link>

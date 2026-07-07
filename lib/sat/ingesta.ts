@@ -1,4 +1,3 @@
-import { XMLParser } from "fast-xml-parser";
 import {
   upsertCfdiDescargado,
   getCfdiDescargado,
@@ -10,71 +9,16 @@ import {
 import { guardarArchivo, idCfdi } from "../archivos";
 import { situacionBloquea } from "./efos";
 import { leerPaquete } from "./descarga";
+import { parseCfdiBasico, type DatosCfdi } from "./cfdi-parse";
+import { derivarDeCfdi } from "./derivar";
 import type { CfdiDescargado, Emisor, SolicitudDescarga } from "../types";
 
 // Ingesta de CFDI a la bóveda: cada XML descargado del SAT (o importado a mano)
 // se analiza, se guarda en la base de datos, se registra y pasa por el motor de
-// validación fiscal (EFOS 69-B y requisitos de deducción).
+// validación fiscal (EFOS 69-B y requisitos de deducción). Además se derivan
+// clientes/proveedores, productos, facturas y pagos a las páginas de operación.
 
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@",
-  removeNSPrefix: true,
-  parseAttributeValue: false,
-  parseTagValue: false,
-});
-
-interface DatosCfdi {
-  uuid: string;
-  version: string;
-  tipoComprobante: string;
-  fecha: string;
-  total: number;
-  metodoPago?: string;
-  formaPago?: string;
-  emisorRfc: string;
-  emisorNombre?: string;
-  receptorRfc: string;
-  receptorNombre?: string;
-}
-
-type Nodo = Record<string, unknown>;
-
-function nodo(n: Nodo | undefined, nombre: string): Nodo | undefined {
-  const v = n?.[nombre];
-  if (v === undefined) return undefined;
-  return (Array.isArray(v) ? v[0] : v) as Nodo;
-}
-
-function attr(n: Nodo | undefined, nombre: string): string | undefined {
-  const v = n?.[`@${nombre}`];
-  return v === undefined ? undefined : String(v);
-}
-
-export function parseCfdiBasico(xml: string): DatosCfdi {
-  const doc = parser.parse(xml) as Nodo;
-  const comp = nodo(doc, "Comprobante");
-  if (!comp) throw new Error("El XML no es un CFDI (falta el nodo Comprobante).");
-  const complemento = nodo(comp, "Complemento");
-  const tfd = complemento ? nodo(complemento, "TimbreFiscalDigital") : undefined;
-  const uuid = attr(tfd, "UUID")?.toUpperCase();
-  if (!uuid) throw new Error("El CFDI no está timbrado (sin UUID).");
-  const emisor = nodo(comp, "Emisor");
-  const receptor = nodo(comp, "Receptor");
-  return {
-    uuid,
-    version: attr(comp, "Version") ?? attr(comp, "version") ?? "",
-    tipoComprobante: attr(comp, "TipoDeComprobante") ?? attr(comp, "tipoDeComprobante") ?? "I",
-    fecha: attr(comp, "Fecha") ?? attr(comp, "fecha") ?? "",
-    total: Number(attr(comp, "Total") ?? attr(comp, "total") ?? 0),
-    metodoPago: attr(comp, "MetodoPago") ?? attr(comp, "metodoDePago"),
-    formaPago: attr(comp, "FormaPago") ?? attr(comp, "formaDePago"),
-    emisorRfc: (attr(emisor, "Rfc") ?? attr(emisor, "rfc") ?? "").toUpperCase(),
-    emisorNombre: attr(emisor, "Nombre") ?? attr(emisor, "nombre"),
-    receptorRfc: (attr(receptor, "Rfc") ?? attr(receptor, "rfc") ?? "").toUpperCase(),
-    receptorNombre: attr(receptor, "Nombre") ?? attr(receptor, "nombre"),
-  };
-}
+export { parseCfdiBasico };
 
 /** Reglas de deducibilidad para CFDI recibidos. */
 function evaluarDeducibilidad(datos: DatosCfdi, situacionEfos?: string) {
@@ -143,6 +87,14 @@ export async function ingerirXml(
     actualizadoEl: new Date().toISOString(),
   };
   await upsertCfdiDescargado(registro);
+
+  // Derivar a las páginas de operación (clientes/proveedores, productos,
+  // facturas, pagos). No debe interrumpir la ingesta si algo falla.
+  try {
+    await derivarDeCfdi(empresa, tipo, xml);
+  } catch {
+    /* la derivación es best-effort; el CFDI ya quedó en la bóveda */
+  }
 
   // Alertas (solo la primera vez por UUID)
   if (tipo === "recibida" && evaluacion.deducible === "bloqueado_efos") {

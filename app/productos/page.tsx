@@ -198,6 +198,7 @@ export default function ProductosPage() {
                     {t}
                   </Badge>
                 ))}
+                {p.origen === "descarga" && <Badge color="slate">Del SAT</Badge>}
               </div>
             </motion.div>
           ))}

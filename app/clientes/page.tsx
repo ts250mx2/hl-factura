@@ -170,9 +170,16 @@ export default function ClientesPage() {
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <Badge color="brand">Régimen {c.regimenFiscal}</Badge>
-                <Badge color="sky">Uso {c.usoCfdi}</Badge>
-                <Badge color="slate">CP {c.codigoPostal}</Badge>
+                {c.relacion === "proveedor" ? (
+                  <Badge color="amber">Proveedor</Badge>
+                ) : c.relacion === "ambos" ? (
+                  <Badge color="brand">Cliente y proveedor</Badge>
+                ) : c.relacion === "cliente" ? (
+                  <Badge color="green">Cliente</Badge>
+                ) : null}
+                {c.regimenFiscal && <Badge color="brand">Régimen {c.regimenFiscal}</Badge>}
+                {c.usoCfdi && <Badge color="sky">Uso {c.usoCfdi}</Badge>}
+                {c.codigoPostal && <Badge color="slate">CP {c.codigoPostal}</Badge>}
               </div>
               {c.email && (
                 <p className="mt-2.5 flex items-center gap-1.5 truncate text-xs text-ink-600">

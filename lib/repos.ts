@@ -265,6 +265,12 @@ export async function getCliente(id: string): Promise<Cliente | null> {
   return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
 }
 
+/** Busca un cliente por RFC dentro de una empresa (para deduplicar al derivar de la bóveda). */
+export async function getClientePorRfc(empresaId: string, rfc: string): Promise<Cliente | null> {
+  const r = await rows("SELECT datosJson FROM clientes WHERE empresaId = ? AND rfc = ? LIMIT 1", [empresaId, rfc]);
+  return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
+}
+
 export async function guardarCliente(c: Cliente): Promise<void> {
   await run(
     `INSERT INTO clientes (id, empresaId, rfc, nombre, datosJson, creadoEl) VALUES (?, ?, ?, ?, ?, ?)
@@ -332,6 +338,12 @@ export async function listarFacturas(
 
 export async function getFactura(id: string): Promise<Factura | null> {
   const r = await rows("SELECT datosJson FROM facturas WHERE id = ?", [id]);
+  return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
+}
+
+/** Busca una factura por UUID dentro de una empresa (dedup al derivar de la bóveda). */
+export async function getFacturaPorUuid(empresaId: string, uuid: string): Promise<Factura | null> {
+  const r = await rows("SELECT datosJson FROM facturas WHERE empresaId = ? AND uuid = ? LIMIT 1", [empresaId, uuid]);
   return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
 }
 
@@ -690,6 +702,12 @@ export async function guardarPagoRep(p: PagoRep): Promise<void> {
 
 export async function getPagoRep(id: string): Promise<PagoRep | null> {
   const r = await rows("SELECT datosJson FROM pagos_rep WHERE id = ?", [id]);
+  return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
+}
+
+/** Busca un REP por UUID dentro de una empresa (dedup al derivar de la bóveda). */
+export async function getPagoRepPorUuid(empresaId: string, uuid: string): Promise<PagoRep | null> {
+  const r = await rows("SELECT datosJson FROM pagos_rep WHERE empresaId = ? AND uuid = ? LIMIT 1", [empresaId, uuid]);
   return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
 }
 

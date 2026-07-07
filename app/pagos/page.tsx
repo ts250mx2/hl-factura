@@ -172,6 +172,7 @@ export default function PagosPage() {
                 </div>
                 <span className="hidden text-xs text-ink-400 sm:block">{fechaCorta(p.creadoEl)}</span>
                 <Badge color={badge.color}>{badge.label}</Badge>
+                {p.origen === "descarga" && <Badge color="sky">Descargado SAT</Badge>}
                 {p.demo && <Badge color="amber">DEMO</Badge>}
                 <span className="tnum w-28 shrink-0 text-right text-sm font-extrabold">{mxn.format(p.monto)}</span>
                 <div className="flex shrink-0 gap-1">
@@ -180,7 +181,7 @@ export default function PagosPage() {
                       <FileDown className="size-4" />
                     </a>
                   )}
-                  {p.estado === "timbrada" && (
+                  {p.estado === "timbrada" && p.origen !== "descarga" && (
                     <button onClick={() => cancelarRep(p)} className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600" title="Cancelar">
                       <Ban className="size-4" />
                     </button>
