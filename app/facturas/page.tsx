@@ -44,6 +44,11 @@ export default function FacturasPage() {
   const filtradas = (facturas ?? []).filter((f) => periodoCtrl.enPeriodo(f.fecha));
   const hayFiltros = Boolean(filtro || busqueda || periodoCtrl.desde || periodoCtrl.hasta);
 
+  // IVA trasladado: de los conceptos cuando existen; si no (p. ej. derivadas de
+  // solo metadata), el total de traslados del comprobante.
+  const ivaDe = (f: Factura) =>
+    f.conceptos.length ? f.conceptos.reduce((s, c) => s + (c.ivaImporte || 0), 0) : f.totalTraslados;
+
   return (
     <div>
       <PageHeader
@@ -128,13 +133,24 @@ export default function FacturasPage() {
                     </p>
                   </div>
                   <div className="hidden text-right sm:block">
-                    <p className="text-xs text-ink-400">{fechaCorta(f.creadoEl)}</p>
+                    <p className="text-xs text-ink-400">{fechaCorta(f.fecha)}</p>
                     <p className="text-xs font-medium text-ink-600">{f.emisorRfc}</p>
                   </div>
                   <Badge color={badge.color}>{badge.label}</Badge>
                   {f.origen === "descarga" && <Badge color="sky">Descargado SAT</Badge>}
                   {f.demo && <Badge color="amber">DEMO</Badge>}
-                  <span className="tnum w-28 shrink-0 text-right text-sm font-extrabold text-ink-900">{mxn.format(f.total)}</span>
+                  <div className="hidden w-28 shrink-0 text-right lg:block">
+                    <p className="text-[10px] uppercase tracking-wide text-ink-400">Subtotal</p>
+                    <p className="tnum text-xs font-semibold text-ink-700">{mxn.format(f.subTotal)}</p>
+                  </div>
+                  <div className="hidden w-24 shrink-0 text-right lg:block">
+                    <p className="text-[10px] uppercase tracking-wide text-ink-400">IVA</p>
+                    <p className="tnum text-xs font-semibold text-ink-700">{mxn.format(ivaDe(f))}</p>
+                  </div>
+                  <div className="w-28 shrink-0 text-right">
+                    <p className="hidden text-[10px] uppercase tracking-wide text-ink-400 lg:block">Total</p>
+                    <p className="tnum text-sm font-extrabold text-ink-900">{mxn.format(f.total)}</p>
+                  </div>
                 </Link>
               </motion.div>
             );

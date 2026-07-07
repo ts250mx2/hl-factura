@@ -101,17 +101,20 @@ export default function BovedaPage() {
   const sincronizar = async () => {
     setSincronizando(true);
     try {
-      const r = await api<{ procesados: number; errores: number; clientesNominaCorregidos?: number }>(
+      const r = await api<{ procesados: number; errores: number; clientesNominaCorregidos?: number; desdeMetadata?: number }>(
         "/api/boveda/derivar",
         { method: "POST" },
       );
       const extra = r.clientesNominaCorregidos
         ? ` Se movieron ${r.clientesNominaCorregidos} empleados de clientes a nómina.`
         : "";
+      const meta = r.desdeMetadata
+        ? ` ${r.desdeMetadata} emitida(s) sin XML (solo metadata) se agregaron a Facturas.`
+        : "";
       toast(
         "success",
         "Bóveda sincronizada",
-        `${r.procesados} CFDI reflejados en clientes, productos, facturas, pagos, empleados y recibos de nómina.${extra}${r.errores ? ` (${r.errores} con error)` : ""}`,
+        `${r.procesados} CFDI reflejados en clientes, productos, facturas, pagos, empleados y recibos de nómina.${meta}${extra}${r.errores ? ` (${r.errores} con error)` : ""}`,
       );
       await cargar();
     } catch (e) {

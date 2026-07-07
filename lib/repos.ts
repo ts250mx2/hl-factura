@@ -342,6 +342,15 @@ export async function listarFacturas(
   sql += " ORDER BY creadoEl DESC LIMIT 500";
   const r = await rows(sql, params);
   let facturas = r.map((x) => JSON.parse(String(x.datosJson)) as Factura);
+  // Orden de presentación: fecha de emisión (la fecha vive en el JSON, no en
+  // una columna) y, dentro del mismo día, folio descendente.
+  facturas.sort((a, b) => {
+    const dia = (f: Factura) => (f.fecha || "").slice(0, 10);
+    if (dia(a) !== dia(b)) return dia(a) < dia(b) ? 1 : -1;
+    const folio = (f: Factura) => Number(f.folio) || 0;
+    if (folio(a) !== folio(b)) return folio(b) - folio(a);
+    return (a.fecha || "") < (b.fecha || "") ? 1 : -1;
+  });
   if (filtros?.q) {
     const q = filtros.q.toLowerCase();
     facturas = facturas.filter(
@@ -504,6 +513,12 @@ export async function listarBoveda(
   sql += " ORDER BY fecha DESC LIMIT ?";
   params.push(Math.min(filtros?.limite ?? 300, 1000));
   const r = await rows(sql, params);
+  return r.map(mapCfdi);
+}
+
+/** Toda la bóveda de una empresa, sin el tope de la vista (para derivarla a operación). */
+export async function listarBovedaCompleta(empresaId: string): Promise<CfdiDescargado[]> {
+  const r = await rows("SELECT * FROM cfdi_descargados WHERE empresaId = ? ORDER BY fecha DESC", [empresaId]);
   return r.map(mapCfdi);
 }
 

@@ -102,7 +102,7 @@ export function FiltroPeriodo({ ctrl }: { ctrl: PeriodoCtrl }) {
         value={ctrl.desde}
         onChange={(e) => ctrl.cambiarDesde(e.target.value)}
         title="Desde"
-        className="tnum w-[6.9rem] cursor-pointer bg-transparent py-2 text-xs font-medium text-ink-600 outline-none"
+        className="tnum w-[7.1rem] cursor-pointer bg-transparent py-2 text-xs font-medium text-ink-600 outline-none"
       />
       <span className="px-1 text-[10px] text-ink-400">→</span>
       <input
@@ -110,7 +110,7 @@ export function FiltroPeriodo({ ctrl }: { ctrl: PeriodoCtrl }) {
         value={ctrl.hasta}
         onChange={(e) => ctrl.cambiarHasta(e.target.value)}
         title="Hasta"
-        className="tnum w-[6.9rem] cursor-pointer bg-transparent py-2 text-xs font-medium text-ink-600 outline-none"
+        className="tnum w-[7.1rem] cursor-pointer bg-transparent py-2 text-xs font-medium text-ink-600 outline-none"
       />
     </div>
   );

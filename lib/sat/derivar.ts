@@ -7,14 +7,14 @@ import {
   getFacturaPorUuid,
   guardarPagoRep,
   getPagoRepPorUuid,
-  listarBoveda,
+  listarBovedaCompleta,
   upsertCfdiDescargado,
   eliminarClientesNominaHuerfanos,
 } from "../repos";
 import { guardarEmpleado, getEmpleadoPorRfc, guardarRecibo, getReciboPeriodo } from "../nomina/repos";
 import { leerXml, guardarArchivo, idCfdi } from "../archivos";
 import { parseCfdiCompleto, type CfdiCompleto, type ConceptoParsed } from "./cfdi-parse";
-import type { Cliente, Producto, Factura, PagoRep, ConceptoFactura, DoctoPago, Emisor } from "../types";
+import type { Cliente, Producto, Factura, PagoRep, ConceptoFactura, DoctoPago, Emisor, CfdiDescargado } from "../types";
 import type { Empleado, ReciboNomina, CalculoRecibo, IncidenciasEmpleado } from "../nomina/tipos";
 
 const INCIDENCIAS_VACIAS: IncidenciasEmpleado = {
@@ -42,12 +42,9 @@ async function upsertContraparte(
   rfc: string,
   nombre: string | undefined,
   relacion: "cliente" | "proveedor",
-  c: CfdiCompleto,
+  datos: { regimen?: string; cp?: string; uso?: string } = {},
 ): Promise<string> {
-  const esCliente = relacion === "cliente";
-  const regimen = esCliente ? c.receptorRegimen : c.emisorRegimen;
-  const cp = esCliente ? c.receptorCp : undefined;
-  const uso = esCliente ? c.usoCfdi : undefined;
+  const { regimen, cp, uso } = datos;
 
   const existente = await getClientePorRfc(empresa.id, rfc);
   if (existente) {
@@ -325,7 +322,11 @@ export async function derivarDeCfdi(empresa: Emisor, tipo: "emitida" | "recibida
   const contraNombre = esEmitida ? c.receptorNombre : c.emisorNombre;
   let clienteId = "";
   if (contraRfc && contraRfc !== empresa.rfc) {
-    clienteId = await upsertContraparte(empresa, contraRfc, contraNombre, esEmitida ? "cliente" : "proveedor", c);
+    clienteId = await upsertContraparte(empresa, contraRfc, contraNombre, esEmitida ? "cliente" : "proveedor", {
+      regimen: esEmitida ? c.receptorRegimen : c.emisorRegimen,
+      cp: esEmitida ? c.receptorCp : undefined,
+      uso: esEmitida ? c.usoCfdi : undefined,
+    });
   }
 
   if (esEmitida && (tc === "I" || tc === "E")) {
@@ -336,21 +337,88 @@ export async function derivarDeCfdi(empresa: Emisor, tipo: "emitida" | "recibida
   }
 }
 
+/** Factura mínima desde un registro de bóveda SIN XML (descarga de solo
+ *  metadata): sin conceptos ni sello, pero visible en Facturas con su UUID,
+ *  fecha, cliente, total y estatus. Si después llega el XML del CFDI, la
+ *  derivación completa la sobre-escribe con todos los datos. */
+async function derivarEmitidaDesdeMetadata(empresa: Emisor, c: CfdiDescargado): Promise<boolean> {
+  if (c.tipo !== "emitida" || !c.uuid) return false;
+  const tc = c.tipoComprobante;
+  if (tc && tc !== "I" && tc !== "E") return false; // P/N/T no son facturas
+  if (!tc) {
+    // Registros viejos de metadata sin tipo: los complementos de pago (P)
+    // traen monto 0 y la nómina tiene como receptor a un empleado registrado;
+    // ambos se excluyen para no meterlos como facturas.
+    if (!(c.total > 0)) return false;
+    if (c.receptorRfc && (await getEmpleadoPorRfc(empresa.id, c.receptorRfc))) return false;
+  }
+
+  const existente = await getFacturaPorUuid(empresa.id, c.uuid);
+  // No degradar: si ya existe (emitida en el sistema o derivada de su XML), no se toca.
+  if (existente && (existente.origen !== "descarga" || existente.xmlPath)) return false;
+
+  let clienteId = existente?.clienteId ?? "";
+  if (!clienteId && c.receptorRfc && c.receptorRfc !== empresa.rfc) {
+    clienteId = await upsertContraparte(empresa, c.receptorRfc, c.receptorNombre, "cliente");
+  }
+
+  const factura: Factura = {
+    id: existente?.id ?? c.uuid,
+    emisorId: empresa.id,
+    clienteId,
+    serie: existente?.serie ?? "",
+    folio: existente?.folio ?? "",
+    fecha: c.fecha,
+    tipoDeComprobante: tc === "E" ? "E" : "I",
+    formaPago: c.formaPago ?? "",
+    metodoPago: c.metodoPago ?? "",
+    moneda: "MXN",
+    usoCfdi: "",
+    conceptos: [],
+    subTotal: c.total,
+    descuento: 0,
+    totalTraslados: 0,
+    totalRetenciones: 0,
+    total: c.total,
+    estado: c.estatusSat === "cancelado" ? "cancelada" : "timbrada",
+    demo: false,
+    origen: "descarga",
+    uuid: c.uuid,
+    emisorRfc: c.emisorRfc,
+    emisorNombre: c.emisorNombre ?? "",
+    receptorRfc: c.receptorRfc,
+    receptorNombre: c.receptorNombre ?? "",
+    creadoEl: existente?.creadoEl ?? ahoraIso(),
+  };
+  await guardarFactura(factura);
+  return true;
+}
+
 /** Vuelve a derivar todos los CFDI ya guardados en la bóveda de una empresa
  *  (para poblar la operación con lo que se descargó antes de esta función). */
 export async function derivarBovedaExistente(
   empresa: Emisor,
-): Promise<{ procesados: number; errores: number; migrados: number; clientesNominaCorregidos: number }> {
-  const cfdis = await listarBoveda([empresa.id], { limite: 1000 });
+): Promise<{ procesados: number; errores: number; migrados: number; clientesNominaCorregidos: number; desdeMetadata: number }> {
+  const cfdis = await listarBovedaCompleta(empresa.id);
   let procesados = 0;
   let errores = 0;
   let migrados = 0;
+  let desdeMetadata = 0;
   for (const c of cfdis) {
     const marcador = idCfdi(empresa.id, c.uuid);
     // Busca el XML en la BD (marcador) y, si no está, en el disco por su xmlPath
     // previo a la migración a base de datos.
     const xml = await leerXml(marcador, c.xmlPath);
-    if (!xml) continue; // solo metadata o XML no disponible
+    if (!xml) {
+      // Sin XML (descarga de solo metadata): al menos refleja las emitidas en
+      // Facturas, con los datos que la metadata sí trae.
+      try {
+        if (await derivarEmitidaDesdeMetadata(empresa, c)) desdeMetadata++;
+      } catch {
+        errores++;
+      }
+      continue;
+    }
     // Migra a la BD los XML que aún viven en disco, para que sean portables
     // (producción) y el "Descargar XML" de la factura derivada funcione.
     if (c.xmlPath !== marcador) {
@@ -372,5 +440,5 @@ export async function derivarBovedaExistente(
   }
   // Corrige sincronizaciones previas que metieron empleados (nómina) como clientes.
   const clientesNominaCorregidos = await eliminarClientesNominaHuerfanos(empresa.id);
-  return { procesados, errores, migrados, clientesNominaCorregidos };
+  return { procesados, errores, migrados, clientesNominaCorregidos, desdeMetadata };
 }

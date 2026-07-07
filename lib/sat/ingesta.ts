@@ -175,6 +175,9 @@ export async function conciliarMetadata(
         uuid,
         empresaId: empresa.id,
         tipo,
+        // La metadata trae el efecto (I/E/P/N/T): permite derivar a Facturas
+        // los emitidos aunque no tengamos el XML.
+        tipoComprobante: fila.efectoComprobante || undefined,
         emisorRfc: (fila.rfcEmisor ?? "").toUpperCase(),
         emisorNombre: fila.nombreEmisor,
         receptorRfc: (fila.rfcReceptor ?? "").toUpperCase(),

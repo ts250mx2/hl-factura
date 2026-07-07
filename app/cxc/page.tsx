@@ -98,9 +98,8 @@ export default function CxcPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4" title="Filtra por la fecha de emisión de la factura">
         <FiltroPeriodo ctrl={periodoCtrl} />
-        <p className="text-xs text-ink-400">Filtra por la fecha de emisión de la factura.</p>
       </div>
 
       {/* Resumen de cartera */}
