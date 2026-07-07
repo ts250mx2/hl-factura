@@ -11,11 +11,16 @@ import {
   upsertCfdiDescargado,
   eliminarClientesNominaHuerfanos,
 } from "../repos";
-import { guardarEmpleado, getEmpleadoPorRfc } from "../nomina/repos";
+import { guardarEmpleado, getEmpleadoPorRfc, guardarRecibo, getReciboPeriodo } from "../nomina/repos";
 import { leerXml, guardarArchivo, idCfdi } from "../archivos";
 import { parseCfdiCompleto, type CfdiCompleto, type ConceptoParsed } from "./cfdi-parse";
 import type { Cliente, Producto, Factura, PagoRep, ConceptoFactura, DoctoPago, Emisor } from "../types";
-import type { Empleado } from "../nomina/tipos";
+import type { Empleado, ReciboNomina, CalculoRecibo, IncidenciasEmpleado } from "../nomina/tipos";
+
+const INCIDENCIAS_VACIAS: IncidenciasEmpleado = {
+  faltas: 0, horasExtraDobles: 0, diasIncapacidad: 0, tipoIncapacidad: "02",
+  diasVacaciones: 0, pagarPrimaVacacional: false, diasAguinaldo: 0, bono: 0, otrasDeducciones: 0,
+};
 
 // Derivación de un CFDI de la bóveda a las páginas de operación:
 //  - Emitidas (I/E):  factura (mía) + cliente (receptor) + productos (conceptos)
@@ -46,8 +51,10 @@ async function upsertContraparte(
 
   const existente = await getClientePorRfc(empresa.id, rfc);
   if (existente) {
-    const relacionFinal =
-      existente.relacion && existente.relacion !== relacion ? "ambos" : (existente.relacion ?? relacion);
+    // Un registro sin relación es una captura manual, que implica cliente: si
+    // ahora aparece como emisor de un recibido, la relación real es "ambos".
+    const previa = existente.relacion ?? "cliente";
+    const relacionFinal = previa !== relacion ? "ambos" : relacion;
     const actualizado: Cliente = {
       ...existente,
       nombre: existente.nombre || nombre || rfc,
@@ -208,10 +215,10 @@ async function upsertPagoDescargado(empresa: Emisor, c: CfdiCompleto, clienteId:
   await guardarPagoRep(pago);
 }
 
-/** Alta/actualización del trabajador (receptor) de un CFDI de nómina. */
-async function upsertEmpleadoDeNomina(empresa: Emisor, c: CfdiCompleto): Promise<void> {
+/** Alta/actualización del trabajador (receptor) de un CFDI de nómina. Devuelve su id. */
+async function upsertEmpleadoDeNomina(empresa: Emisor, c: CfdiCompleto): Promise<string> {
   const rfc = c.receptorRfc;
-  if (!rfc || rfc === empresa.rfc) return;
+  if (!rfc || rfc === empresa.rfc) return "";
   const n = c.nomina;
   const existente = await getEmpleadoPorRfc(empresa.id, rfc);
   // Preserva lo capturado a mano; solo completa lo que falte con el CFDI.
@@ -240,6 +247,58 @@ async function upsertEmpleadoDeNomina(empresa: Emisor, c: CfdiCompleto): Promise
     creadoEl: existente?.creadoEl ?? ahoraIso(),
   };
   await guardarEmpleado(empleado);
+  return empleado.id;
+}
+
+/** Reconstruye el recibo (ReciboNomina) desde el complemento de nómina. */
+async function upsertReciboDeNomina(empresa: Emisor, c: CfdiCompleto, empleadoId: string): Promise<void> {
+  const n = c.nomina;
+  if (!n) return;
+  const existente = await getReciboPeriodo(empresa.id, empleadoId, n.periodoInicio, n.periodoFin);
+  // No pisar un recibo timbrado desde el sistema.
+  if (existente && existente.origen !== "descarga") return;
+  const isrRetenido = n.deducciones.filter((d) => d.tipo === "002").reduce((s, d) => s + d.gravado, 0);
+  const imssObrero = n.deducciones.filter((d) => d.tipo === "001").reduce((s, d) => s + d.gravado, 0);
+  const calculo: CalculoRecibo = {
+    diasPagados: n.numDiasPagados,
+    salarioDiario: n.salarioDiario,
+    sdi: n.sdi,
+    sbc: n.sbc,
+    percepciones: n.percepciones,
+    deducciones: n.deducciones,
+    otrosPagos: n.otrosPagos,
+    totalPercepciones: n.totalPercepciones,
+    totalGravado: n.totalGravado,
+    totalExento: n.totalExento,
+    totalDeducciones: n.totalDeducciones,
+    totalOtrosPagos: n.totalOtrosPagos,
+    neto: c.total,
+    // El recibo trae el ISR y el IMSS obrero retenidos, pero no el desglose de
+    // la tarifa ni el costo patronal (no van en el CFDI).
+    isr: { base: 0, tarifa: 0, cuota: 0, causado: isrRetenido, subsidio: n.subsidioCausado, retenido: isrRetenido },
+    imssObrero,
+    costoPatronal: { imss: 0, infonavit: 0, total: 0 },
+  };
+  const recibo: ReciboNomina = {
+    id: existente?.id ?? c.uuid,
+    empresaId: empresa.id,
+    empleadoId,
+    empleadoNombre: c.receptorNombre ?? "",
+    empleadoRfc: c.receptorRfc,
+    periodoInicio: n.periodoInicio,
+    periodoFin: n.periodoFin,
+    fechaPago: n.fechaPago || c.fecha,
+    calculo,
+    incidencias: { ...INCIDENCIAS_VACIAS },
+    estado: "timbrada",
+    demo: false,
+    origen: "descarga",
+    uuid: c.uuid,
+    fechaTimbrado: c.fechaTimbrado,
+    xmlPath: idCfdi(empresa.id, c.uuid),
+    creadoEl: existente?.creadoEl ?? ahoraIso(),
+  };
+  await guardarRecibo(recibo);
 }
 
 /** Deriva un CFDI (ya en la bóveda) a las páginas de operación. */
@@ -248,10 +307,13 @@ export async function derivarDeCfdi(empresa: Emisor, tipo: "emitida" | "recibida
   const esEmitida = tipo === "emitida";
   const tc = c.tipoComprobante;
 
-  // Nómina emitida: el receptor es un trabajador → se sincroniza a Empleados,
-  // no a Clientes. (Una nómina recibida no aplica a este flujo.)
+  // Nómina emitida: el receptor es un trabajador → se sincroniza a Empleados
+  // (no a Clientes) y su recibo histórico. (Una nómina recibida no aplica.)
   if (tc === "N") {
-    if (esEmitida) await upsertEmpleadoDeNomina(empresa, c);
+    if (esEmitida) {
+      const empleadoId = await upsertEmpleadoDeNomina(empresa, c);
+      if (empleadoId) await upsertReciboDeNomina(empresa, c, empleadoId);
+    }
     return;
   }
 

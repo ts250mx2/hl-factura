@@ -111,7 +111,7 @@ export default function BovedaPage() {
       toast(
         "success",
         "Bóveda sincronizada",
-        `${r.procesados} CFDI reflejados en clientes, productos, facturas, pagos y empleados (nómina).${extra}${r.errores ? ` (${r.errores} con error)` : ""}`,
+        `${r.procesados} CFDI reflejados en clientes, productos, facturas, pagos, empleados y recibos de nómina.${extra}${r.errores ? ` (${r.errores} con error)` : ""}`,
       );
       await cargar();
     } catch (e) {

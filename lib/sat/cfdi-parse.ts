@@ -112,6 +112,14 @@ export interface PagoParsed {
   }[];
 }
 
+export interface LineaNominaParsed {
+  tipo: string; // TipoPercepcion / TipoDeduccion / TipoOtroPago
+  clave: string;
+  concepto: string;
+  gravado: number; // deducciones/otros pagos: el importe va aquí
+  exento: number;
+}
+
 /** Datos del trabajador (receptor) de un CFDI de nómina (complemento nomina12). */
 export interface NominaParsed {
   curp: string;
@@ -134,6 +142,13 @@ export interface NominaParsed {
   periodoFin: string;
   totalPercepciones: number;
   totalDeducciones: number;
+  totalOtrosPagos: number;
+  totalGravado: number;
+  totalExento: number;
+  subsidioCausado: number;
+  percepciones: LineaNominaParsed[];
+  deducciones: LineaNominaParsed[];
+  otrosPagos: LineaNominaParsed[];
   salarioDiario: number; // estimado: sueldo (percepción 001) / días pagados, o el SDI
 }
 
@@ -268,14 +283,47 @@ function parseNomina(comp: Nodo): NominaParsed | undefined {
   if (!nom) return undefined;
   const rec = nodo(nom, "Receptor");
   const numDias = num(attr(nom, "NumDiasPagados")) || 1;
+
+  const percNode = nodo(nom, "Percepciones");
+  const percepciones: LineaNominaParsed[] = percNode
+    ? lista(percNode, "Percepcion").map((p) => ({
+        tipo: attr(p, "TipoPercepcion") ?? "",
+        clave: attr(p, "Clave") ?? "",
+        concepto: attr(p, "Concepto") ?? "",
+        gravado: num(attr(p, "ImporteGravado")),
+        exento: num(attr(p, "ImporteExento")),
+      }))
+    : [];
+  const dedNode = nodo(nom, "Deducciones");
+  const deducciones: LineaNominaParsed[] = dedNode
+    ? lista(dedNode, "Deduccion").map((d) => ({
+        tipo: attr(d, "TipoDeduccion") ?? "",
+        clave: attr(d, "Clave") ?? "",
+        concepto: attr(d, "Concepto") ?? "",
+        gravado: num(attr(d, "Importe")),
+        exento: 0,
+      }))
+    : [];
+  const opNode = nodo(nom, "OtrosPagos");
+  let subsidioCausado = 0;
+  const otrosPagos: LineaNominaParsed[] = opNode
+    ? lista(opNode, "OtroPago").map((o) => {
+        const sub = nodo(o, "SubsidioAlEmpleo");
+        if (sub) subsidioCausado += num(attr(sub, "SubsidioCausado"));
+        return {
+          tipo: attr(o, "TipoOtroPago") ?? "",
+          clave: attr(o, "Clave") ?? "",
+          concepto: attr(o, "Concepto") ?? "",
+          gravado: num(attr(o, "Importe")),
+          exento: 0,
+        };
+      })
+    : [];
+
   // Salario diario estimado: percepción de sueldos (001) entre los días pagados.
-  const perc = nodo(nom, "Percepciones");
-  let sueldo = 0;
-  if (perc) {
-    for (const p of lista(perc, "Percepcion")) {
-      if (attr(p, "TipoPercepcion") === "001") sueldo += num(attr(p, "ImporteGravado")) + num(attr(p, "ImporteExento"));
-    }
-  }
+  const sueldo = percepciones
+    .filter((p) => p.tipo === "001")
+    .reduce((s, p) => s + p.gravado + p.exento, 0);
   const sdi = num(attr(rec, "SalarioDiarioIntegrado"));
   const salarioDiario = sueldo > 0 ? Math.round((sueldo / numDias) * 100) / 100 : sdi;
   return {
@@ -299,6 +347,13 @@ function parseNomina(comp: Nodo): NominaParsed | undefined {
     periodoFin: attr(nom, "FechaFinalPago") ?? "",
     totalPercepciones: num(attr(nom, "TotalPercepciones")),
     totalDeducciones: num(attr(nom, "TotalDeducciones")),
+    totalOtrosPagos: num(attr(nom, "TotalOtrosPagos")),
+    totalGravado: num(attr(percNode, "TotalGravado")),
+    totalExento: num(attr(percNode, "TotalExento")),
+    subsidioCausado,
+    percepciones,
+    deducciones,
+    otrosPagos,
     salarioDiario,
   };
 }

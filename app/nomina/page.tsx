@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UsersRound, Plus, Trash2, BadgeDollarSign, PlayCircle, Stamp, FileDown, Mail, Ban, Settings2, FileSpreadsheet } from "lucide-react";
+import { UsersRound, Plus, Trash2, BadgeDollarSign, PlayCircle, Stamp, FileDown, Mail, Ban, Settings2, FileSpreadsheet, Search } from "lucide-react";
 import { api, postJson, putJson, ApiError, mxn, fechaCorta } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner, listContainer, listItem } from "@/components/ui";
 import { useToast } from "@/components/toast";
@@ -37,6 +37,7 @@ const FORM_EMP_VACIO = {
 export default function NominaPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<string>("empleados");
+  const [busqueda, setBusqueda] = useState("");
   const [empleados, setEmpleados] = useState<Empleado[] | null>(null);
   const [recibos, setRecibos] = useState<ReciboNomina[]>([]);
   const [config, setConfig] = useState<ConfigNomina | null>(null);
@@ -172,7 +173,14 @@ export default function NominaPage() {
       }
     : null;
 
-  const periodosRecibos = [...new Set(recibos.map((r) => r.periodoInicio))];
+  // Búsqueda: filtra empleados (nombre, RFC, NSS, No.), la corrida y los recibos.
+  const q = busqueda.trim().toLowerCase();
+  const coincide = (e: Empleado) =>
+    !q || e.nombre.toLowerCase().includes(q) || e.rfc.toLowerCase().includes(q) || e.numEmpleado.toLowerCase().includes(q) || e.nss.includes(q);
+  const empleadosFiltrados = (empleados ?? []).filter(coincide);
+  const enCorrida = (empleados ?? []).filter((e) => e.activo && seleccion[e.id] && coincide(e));
+  const recibosFiltrados = q ? recibos.filter((r) => r.empleadoNombre.toLowerCase().includes(q)) : recibos;
+  const periodosRecibos = [...new Set(recibosFiltrados.map((r) => r.periodoInicio))];
 
   return (
     <div>
@@ -198,6 +206,27 @@ export default function NominaPage() {
         })}
       </div>
 
+      {tab !== "config" && empleados !== null && (empleados.length > 0 || tab === "empleados") && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {empleados.length > 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative w-full max-w-sm">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por nombre, RFC, NSS o No. de empleado…"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+            </motion.div>
+          )}
+          {tab === "empleados" && (
+            <Button onClick={() => { setFormEmp(FORM_EMP_VACIO); setModalEmp(true); }} className="ml-auto">
+              <Plus className="size-4" /> Nuevo empleado
+            </Button>
+          )}
+        </div>
+      )}
+
       {empleados === null ? (
         <Spinner label="Cargando nómina…" />
       ) : (
@@ -206,11 +235,6 @@ export default function NominaPage() {
             {/* ---------- EMPLEADOS ---------- */}
             {tab === "empleados" && (
               <div>
-                <div className="mb-4 flex justify-end">
-                  <Button onClick={() => { setFormEmp(FORM_EMP_VACIO); setModalEmp(true); }}>
-                    <Plus className="size-4" /> Nuevo empleado
-                  </Button>
-                </div>
                 {empleados.length === 0 ? (
                   <EmptyState
                     icon={<UsersRound className="size-7" />}
@@ -218,9 +242,11 @@ export default function NominaPage() {
                     detail="Da de alta a tus trabajadores con sus datos SAT (RFC, CURP) e IMSS (NSS, salario). El SDI y el SBC se calculan solos."
                     action={<Button onClick={() => { setFormEmp(FORM_EMP_VACIO); setModalEmp(true); }}><Plus className="size-4" /> Nuevo empleado</Button>}
                   />
+                ) : empleadosFiltrados.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-ink-400">Ningún empleado coincide con «{busqueda}».</p>
                 ) : (
                   <motion.div variants={listContainer} initial="hidden" animate="show" className="card divide-y divide-slate-100">
-                    {empleados.map((e) => (
+                    {empleadosFiltrados.map((e) => (
                       <motion.div key={e.id} variants={listItem} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
                         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-violet-600 text-xs font-extrabold text-white">
                           {e.nombre.slice(0, 1)}
@@ -276,7 +302,10 @@ export default function NominaPage() {
                   <p className="py-8 text-center text-sm text-ink-400">No hay empleados activos. Dales de alta en la pestaña Empleados.</p>
                 ) : (
                   <div className="card divide-y divide-slate-100">
-                    {empleados.filter((e) => e.activo && seleccion[e.id]).map((e) => {
+                    {enCorrida.length === 0 && (
+                      <p className="px-5 py-8 text-center text-sm text-ink-400">Ningún empleado de la corrida coincide con «{busqueda}».</p>
+                    )}
+                    {enCorrida.map((e) => {
                       const inc = seleccion[e.id];
                       const tieneIncidencias = inc.faltas > 0 || inc.horasExtraDobles > 0 || inc.diasIncapacidad > 0 || inc.diasAguinaldo > 0 || inc.bono > 0 || inc.otrasDeducciones > 0 || inc.pagarPrimaVacacional;
                       const calc = preview?.find((p) => p.empleadoId === e.id)?.calculo;
@@ -327,10 +356,12 @@ export default function NominaPage() {
               <div>
                 {recibos.length === 0 ? (
                   <EmptyState icon={<Stamp className="size-7" />} title="Sin recibos" detail="Timbra tu primera corrida en la pestaña «Calcular y timbrar»." />
+                ) : recibosFiltrados.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-ink-400">Ningún recibo coincide con «{busqueda}».</p>
                 ) : (
                   <div className="space-y-5">
                     {periodosRecibos.map((periodo) => {
-                      const delPeriodo = recibos.filter((r) => r.periodoInicio === periodo);
+                      const delPeriodo = recibosFiltrados.filter((r) => r.periodoInicio === periodo);
                       return (
                         <div key={periodo} className="card overflow-hidden">
                           <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-3">
@@ -350,6 +381,7 @@ export default function NominaPage() {
                               <div key={r.id} className="flex flex-wrap items-center gap-3 px-5 py-2.5">
                                 <p className="min-w-0 flex-1 truncate text-sm font-semibold">{r.empleadoNombre}</p>
                                 {r.estado === "timbrada" ? <Badge color="green">Timbrado</Badge> : r.estado === "cancelada" ? <Badge color="red">Cancelado</Badge> : <Badge color="amber">Error</Badge>}
+                                {r.origen === "descarga" && <Badge color="sky">Del SAT</Badge>}
                                 {r.demo && <Badge color="amber">DEMO</Badge>}
                                 {r.enviadoEl && <Badge color="sky">Enviado</Badge>}
                                 <span className="tnum w-24 text-right text-sm font-extrabold">{mxn.format(r.calculo.neto)}</span>
@@ -359,7 +391,7 @@ export default function NominaPage() {
                                       <FileDown className="size-4" />
                                     </a>
                                   )}
-                                  {r.estado === "timbrada" && (
+                                  {r.estado === "timbrada" && r.origen !== "descarga" && (
                                     <button onClick={() => cancelarRecibo(r)} className="rounded-lg p-1.5 text-ink-400 hover:bg-rose-50 hover:text-rose-600" title="Cancelar">
                                       <Ban className="size-4" />
                                     </button>

@@ -81,6 +81,7 @@ export interface ReciboNomina {
   incidencias: IncidenciasEmpleado;
   estado: "timbrada" | "error" | "cancelada";
   demo: boolean;
+  origen?: "manual" | "descarga"; // "descarga" = reconstruido desde un CFDI de nómina de la bóveda
   uuid?: string;
   fechaTimbrado?: string;
   selloCFD?: string;
