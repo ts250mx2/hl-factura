@@ -21,6 +21,7 @@ export interface Empleado {
   cuentaBancaria?: string;
   salarioDiario: number;
   activo: boolean;
+  origen?: "manual" | "descarga"; // "descarga" = sincronizado desde un CFDI de nómina de la bóveda
   creadoEl: string;
 }
 

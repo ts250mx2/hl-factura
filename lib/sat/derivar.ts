@@ -9,10 +9,13 @@ import {
   getPagoRepPorUuid,
   listarBoveda,
   upsertCfdiDescargado,
+  eliminarClientesNominaHuerfanos,
 } from "../repos";
+import { guardarEmpleado, getEmpleadoPorRfc } from "../nomina/repos";
 import { leerXml, guardarArchivo, idCfdi } from "../archivos";
 import { parseCfdiCompleto, type CfdiCompleto, type ConceptoParsed } from "./cfdi-parse";
 import type { Cliente, Producto, Factura, PagoRep, ConceptoFactura, DoctoPago, Emisor } from "../types";
+import type { Empleado } from "../nomina/tipos";
 
 // Derivación de un CFDI de la bóveda a las páginas de operación:
 //  - Emitidas (I/E):  factura (mía) + cliente (receptor) + productos (conceptos)
@@ -205,11 +208,52 @@ async function upsertPagoDescargado(empresa: Emisor, c: CfdiCompleto, clienteId:
   await guardarPagoRep(pago);
 }
 
+/** Alta/actualización del trabajador (receptor) de un CFDI de nómina. */
+async function upsertEmpleadoDeNomina(empresa: Emisor, c: CfdiCompleto): Promise<void> {
+  const rfc = c.receptorRfc;
+  if (!rfc || rfc === empresa.rfc) return;
+  const n = c.nomina;
+  const existente = await getEmpleadoPorRfc(empresa.id, rfc);
+  // Preserva lo capturado a mano; solo completa lo que falte con el CFDI.
+  const empleado: Empleado = {
+    id: existente?.id ?? crypto.randomUUID(),
+    empresaId: empresa.id,
+    numEmpleado: existente?.numEmpleado || n?.numEmpleado || "",
+    nombre: existente?.nombre || c.receptorNombre || rfc,
+    rfc,
+    curp: existente?.curp || n?.curp || "",
+    nss: existente?.nss || n?.nss || "",
+    codigoPostal: existente?.codigoPostal || c.receptorCp || "",
+    email: existente?.email,
+    fechaInicioLaboral: existente?.fechaInicioLaboral || n?.fechaInicioLaboral || "",
+    tipoContrato: existente?.tipoContrato || n?.tipoContrato || "01",
+    tipoRegimen: existente?.tipoRegimen || n?.tipoRegimen || "02",
+    periodicidadPago: existente?.periodicidadPago || n?.periodicidadPago || "04",
+    riesgoPuesto: existente?.riesgoPuesto || n?.riesgoPuesto || "1",
+    departamento: existente?.departamento || n?.departamento,
+    puesto: existente?.puesto || n?.puesto,
+    banco: existente?.banco || n?.banco,
+    cuentaBancaria: existente?.cuentaBancaria || n?.cuentaBancaria,
+    salarioDiario: existente?.salarioDiario || n?.salarioDiario || 0,
+    activo: existente?.activo ?? true,
+    origen: existente?.origen ?? "descarga",
+    creadoEl: existente?.creadoEl ?? ahoraIso(),
+  };
+  await guardarEmpleado(empleado);
+}
+
 /** Deriva un CFDI (ya en la bóveda) a las páginas de operación. */
 export async function derivarDeCfdi(empresa: Emisor, tipo: "emitida" | "recibida", xml: string): Promise<void> {
   const c = parseCfdiCompleto(xml);
   const esEmitida = tipo === "emitida";
   const tc = c.tipoComprobante;
+
+  // Nómina emitida: el receptor es un trabajador → se sincroniza a Empleados,
+  // no a Clientes. (Una nómina recibida no aplica a este flujo.)
+  if (tc === "N") {
+    if (esEmitida) await upsertEmpleadoDeNomina(empresa, c);
+    return;
+  }
 
   // Contraparte: en emitidas es el receptor (cliente); en recibidas, el emisor
   // (proveedor). Se ignora si coincide con la propia empresa.
@@ -232,7 +276,7 @@ export async function derivarDeCfdi(empresa: Emisor, tipo: "emitida" | "recibida
  *  (para poblar la operación con lo que se descargó antes de esta función). */
 export async function derivarBovedaExistente(
   empresa: Emisor,
-): Promise<{ procesados: number; errores: number; migrados: number }> {
+): Promise<{ procesados: number; errores: number; migrados: number; clientesNominaCorregidos: number }> {
   const cfdis = await listarBoveda([empresa.id], { limite: 1000 });
   let procesados = 0;
   let errores = 0;
@@ -262,5 +306,7 @@ export async function derivarBovedaExistente(
       errores++;
     }
   }
-  return { procesados, errores, migrados };
+  // Corrige sincronizaciones previas que metieron empleados (nómina) como clientes.
+  const clientesNominaCorregidos = await eliminarClientesNominaHuerfanos(empresa.id);
+  return { procesados, errores, migrados, clientesNominaCorregidos };
 }

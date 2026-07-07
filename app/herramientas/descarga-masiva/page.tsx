@@ -7,6 +7,7 @@ import { CloudDownload, Plus, RefreshCcw, PackageOpen, FileDown } from "lucide-r
 import { api, postJson, ApiError, fechaLarga } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner, listContainer, listItem } from "@/components/ui";
 import { useToast } from "@/components/toast";
+import { useSesion } from "@/components/session-provider";
 import type { Emisor, SolicitudDescarga } from "@/lib/types";
 
 const ESTADOS: Record<string, { color: "green" | "red" | "amber" | "slate" | "brand" | "sky"; label: string }> = {
@@ -26,6 +27,7 @@ interface Contenido {
 
 export default function DescargaMasivaPage() {
   const { toast } = useToast();
+  const { sesion } = useSesion();
   const [solicitudes, setSolicitudes] = useState<SolicitudDescarga[] | null>(null);
   const [emisores, setEmisores] = useState<Emisor[]>([]);
   const [modal, setModal] = useState(false);
@@ -36,7 +38,6 @@ export default function DescargaMasivaPage() {
   const hoy = new Date().toISOString().slice(0, 10);
   const hace30 = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
   const [form, setForm] = useState({
-    emisorId: "",
     tipo: "emitidas",
     formato: "xml",
     fechaInicio: hace30,
@@ -115,13 +116,15 @@ export default function DescargaMasivaPage() {
     URL.revokeObjectURL(a.href);
   };
 
-  const emisoresConFiel = emisores.filter((e) => e.fiel);
+  // Igual que el resto de la app: solo se opera la empresa activa ("Trabajando en").
+  const empresaActiva = emisores.find((e) => e.id === sesion?.empresaActivaId) ?? null;
+  const fielLista = Boolean(empresaActiva?.fiel);
 
   return (
     <div>
       <PageHeader
         title="Descarga masiva del SAT"
-        subtitle="Recupera los XML que has emitido o recibido, directamente de los servidores del SAT usando tu FIEL (e.firma)."
+        subtitle={`Recupera los XML emitidos o recibidos directamente del SAT usando la FIEL (e.firma). Se muestran solo las solicitudes de ${empresaActiva ? `${empresaActiva.nombre} (${empresaActiva.rfc})` : "la empresa activa"}.`}
         actions={
           <Button onClick={() => setModal(true)}>
             <Plus className="size-4" /> Nueva solicitud
@@ -139,14 +142,14 @@ export default function DescargaMasivaPage() {
       ) : solicitudes.length === 0 ? (
         <EmptyState
           icon={<CloudDownload className="size-7" />}
-          title="Sin solicitudes todavía"
+          title={`Sin solicitudes de ${empresaActiva ? empresaActiva.nombre : "esta empresa"}`}
           detail={
-            emisoresConFiel.length === 0
-              ? "Primero sube la FIEL (e.firma) de un emisor en la sección Emisores; el SAT la requiere para autenticar la descarga."
-              : "Solicita tus CFDI emitidos o recibidos de cualquier periodo."
+            !fielLista
+              ? "La empresa activa no tiene FIEL (e.firma) cargada. Súbela en la sección Emisores; el SAT la requiere para autenticar la descarga."
+              : "Solicita los CFDI emitidos o recibidos de cualquier periodo. Para otra empresa, cámbiala en «Trabajando en»."
           }
           action={
-            emisoresConFiel.length === 0 ? (
+            !fielLista ? (
               <Link href="/emisores">
                 <Button variant="secondary">Ir a Emisores</Button>
               </Link>
@@ -211,19 +214,17 @@ export default function DescargaMasivaPage() {
         subtitle="Se firma con la FIEL del emisor y se presenta al servicio oficial del SAT."
       >
         <div className="space-y-4">
-          <Field label="Emisor (con FIEL)">
-            <Select value={form.emisorId} onChange={(e) => setForm({ ...form, emisorId: e.target.value })}>
-              <option value="">Selecciona…</option>
-              {emisoresConFiel.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nombre} · {e.rfc}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          {emisoresConFiel.length === 0 && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-bold">
+              {empresaActiva ? `${empresaActiva.nombre} · ${empresaActiva.rfc}` : "Sin empresa activa"}
+            </p>
+            <p className="mt-0.5 text-[11px] text-ink-400">
+              La solicitud se presenta a nombre de la empresa activa. Para otra empresa, cámbiala en «Trabajando en».
+            </p>
+          </div>
+          {!fielLista && (
             <p className="rounded-lg bg-amber-50 p-3 text-xs font-medium text-amber-800">
-              Ningún emisor tiene FIEL cargada. Súbela en Emisores → Administrar certificados.
+              La empresa activa no tiene FIEL cargada. Súbela en Emisores → Administrar certificados.
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -246,7 +247,7 @@ export default function DescargaMasivaPage() {
               <Input type="date" value={form.fechaFin} onChange={(e) => setForm({ ...form, fechaFin: e.target.value })} />
             </Field>
           </div>
-          <Button onClick={crear} loading={creando} className="w-full" disabled={!form.emisorId}>
+          <Button onClick={crear} loading={creando} className="w-full" disabled={!empresaActiva || !fielLista}>
             <CloudDownload className="size-4" /> Presentar solicitud al SAT
           </Button>
         </div>

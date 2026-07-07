@@ -4,10 +4,19 @@ import { listarDescargas, guardarDescarga, genId } from "@/lib/repos";
 import { solicitarDescarga } from "@/lib/sat/descarga";
 import type { SolicitudDescarga } from "@/lib/types";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const ctx = await requireCtx();
-    return ok(await listarDescargas(ctx.empresas.map((e) => e.id)));
+    const url = new URL(req.url);
+    const emisorId = url.searchParams.get("emisorId");
+
+    // Por defecto solo la empresa activa ("Trabajando en"); ?emisorId= la cambia.
+    let empresaIds = ctx.empresaActiva ? [ctx.empresaActiva.id] : [];
+    if (emisorId) {
+      await requireEmpresa(ctx, emisorId);
+      empresaIds = [emisorId];
+    }
+    return ok(await listarDescargas(empresaIds));
   } catch (e) {
     return authFail(e);
   }
@@ -28,7 +37,12 @@ export async function POST(req: Request) {
     }
     if (fechaInicio > fechaFin) return fail("La fecha inicial no puede ser posterior a la final.");
 
-    const empresa = await requireEmpresa(ctx, String(body.emisorId || ""));
+    // Las solicitudes se presentan siempre a nombre de la empresa activa ("Trabajando en").
+    const empresa = ctx.empresaActiva;
+    if (!empresa) return fail("Selecciona una empresa en «Trabajando en» para presentar la solicitud.");
+    if (body.emisorId && String(body.emisorId) !== empresa.id) {
+      return fail("Solo puedes presentar solicitudes de la empresa activa. Cámbiala en «Trabajando en».");
+    }
     const { requestId } = await solicitarDescarga(empresa, { tipo, formato, fechaInicio, fechaFin });
 
     const solicitud: SolicitudDescarga = {

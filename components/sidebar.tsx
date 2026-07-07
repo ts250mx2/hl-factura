@@ -47,12 +47,12 @@ const NAV: Item[] = [
   { href: "/contabilidad", label: "Contabilidad", icon: Calculator, roles: ["admin", "supervisor", "auxiliar"] },
   { href: "/nomina", label: "Nómina", icon: UsersRound, roles: ["admin", "supervisor", "auxiliar"] },
   { href: "/alertas", label: "Alertas", icon: Bell },
-  { href: "/emisores", label: "Empresas / RFCs", icon: Building2, roles: ["admin", "supervisor"] },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/productos", label: "Productos", icon: Package },
 ];
 
 const NAV_SAT: Item[] = [
+  { href: "/emisores", label: "Empresas / RFCs", icon: Building2, roles: ["admin", "supervisor"] },
   { href: "/herramientas/validador", label: "Validador CFDI", icon: ShieldCheck },
   { href: "/herramientas/descarga-masiva", label: "Descarga masiva", icon: CloudDownload },
   { href: "/usuarios", label: "Usuarios", icon: UserCog, roles: ["admin"] },

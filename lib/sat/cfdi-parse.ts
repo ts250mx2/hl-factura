@@ -112,6 +112,31 @@ export interface PagoParsed {
   }[];
 }
 
+/** Datos del trabajador (receptor) de un CFDI de nómina (complemento nomina12). */
+export interface NominaParsed {
+  curp: string;
+  nss: string;
+  numEmpleado: string;
+  fechaInicioLaboral: string;
+  tipoContrato: string;
+  tipoRegimen: string;
+  periodicidadPago: string;
+  riesgoPuesto: string;
+  departamento?: string;
+  puesto?: string;
+  banco?: string;
+  cuentaBancaria?: string;
+  sbc: number;
+  sdi: number;
+  numDiasPagados: number;
+  fechaPago: string;
+  periodoInicio: string;
+  periodoFin: string;
+  totalPercepciones: number;
+  totalDeducciones: number;
+  salarioDiario: number; // estimado: sueldo (percepción 001) / días pagados, o el SDI
+}
+
 export interface CfdiCompleto extends DatosCfdi {
   serie?: string;
   folio?: string;
@@ -128,6 +153,7 @@ export interface CfdiCompleto extends DatosCfdi {
   receptorCp?: string;
   conceptos: ConceptoParsed[];
   pagos: PagoParsed[];
+  nomina?: NominaParsed;
 }
 
 /** Impuestos de un concepto → ImpuestosProducto + importes calculados. */
@@ -235,6 +261,48 @@ function parsePagos(comp: Nodo): PagoParsed[] {
   }));
 }
 
+/** Trabajador (receptor) del complemento de nómina, si el CFDI es de tipo N. */
+function parseNomina(comp: Nodo): NominaParsed | undefined {
+  const complemento = nodo(comp, "Complemento");
+  const nom = complemento ? nodo(complemento, "Nomina") : undefined;
+  if (!nom) return undefined;
+  const rec = nodo(nom, "Receptor");
+  const numDias = num(attr(nom, "NumDiasPagados")) || 1;
+  // Salario diario estimado: percepción de sueldos (001) entre los días pagados.
+  const perc = nodo(nom, "Percepciones");
+  let sueldo = 0;
+  if (perc) {
+    for (const p of lista(perc, "Percepcion")) {
+      if (attr(p, "TipoPercepcion") === "001") sueldo += num(attr(p, "ImporteGravado")) + num(attr(p, "ImporteExento"));
+    }
+  }
+  const sdi = num(attr(rec, "SalarioDiarioIntegrado"));
+  const salarioDiario = sueldo > 0 ? Math.round((sueldo / numDias) * 100) / 100 : sdi;
+  return {
+    curp: attr(rec, "Curp") ?? "",
+    nss: attr(rec, "NumSeguridadSocial") ?? "",
+    numEmpleado: attr(rec, "NumEmpleado") ?? "",
+    fechaInicioLaboral: attr(rec, "FechaInicioRelLaboral") ?? "",
+    tipoContrato: attr(rec, "TipoContrato") ?? "",
+    tipoRegimen: attr(rec, "TipoRegimen") ?? "",
+    periodicidadPago: attr(rec, "PeriodicidadPago") ?? "",
+    riesgoPuesto: attr(rec, "RiesgoPuesto") ?? "",
+    departamento: attr(rec, "Departamento"),
+    puesto: attr(rec, "Puesto"),
+    banco: attr(rec, "Banco"),
+    cuentaBancaria: attr(rec, "CuentaBancaria"),
+    sbc: num(attr(rec, "SalarioBaseCotApor")),
+    sdi,
+    numDiasPagados: numDias,
+    fechaPago: attr(nom, "FechaPago") ?? "",
+    periodoInicio: attr(nom, "FechaInicialPago") ?? "",
+    periodoFin: attr(nom, "FechaFinalPago") ?? "",
+    totalPercepciones: num(attr(nom, "TotalPercepciones")),
+    totalDeducciones: num(attr(nom, "TotalDeducciones")),
+    salarioDiario,
+  };
+}
+
 /** CFDI completo para derivar clientes/productos/facturas/pagos. */
 export function parseCfdiCompleto(xml: string): CfdiCompleto {
   const base = parseCfdiBasico(xml);
@@ -262,5 +330,6 @@ export function parseCfdiCompleto(xml: string): CfdiCompleto {
     receptorCp: attr(receptor, "DomicilioFiscalReceptor"),
     conceptos: parseConceptos(comp),
     pagos: parsePagos(comp),
+    nomina: parseNomina(comp),
   };
 }

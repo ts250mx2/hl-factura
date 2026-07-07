@@ -226,7 +226,7 @@ export default function NominaPage() {
                           {e.nombre.slice(0, 1)}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold">{e.nombre} {!e.activo && <Badge color="red">Baja</Badge>}</p>
+                          <p className="truncate text-sm font-bold">{e.nombre} {e.origen === "descarga" && <Badge color="sky">Del SAT</Badge>} {!e.activo && <Badge color="red">Baja</Badge>}</p>
                           <p className="mono text-[11px] text-ink-400">{e.rfc} · NSS {e.nss || "—"} · #{e.numEmpleado}</p>
                         </div>
                         <div className="hidden text-right text-xs sm:block">

@@ -32,6 +32,11 @@ export async function getEmpleado(id: string): Promise<Empleado | null> {
   return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
 }
 
+export async function getEmpleadoPorRfc(empresaId: string, rfc: string): Promise<Empleado | null> {
+  const r = await rows("SELECT datosJson FROM empleados WHERE empresaId = ? AND rfc = ? LIMIT 1", [empresaId, rfc]);
+  return r[0] ? JSON.parse(String(r[0].datosJson)) : null;
+}
+
 export async function guardarEmpleado(e: Empleado): Promise<void> {
   await run(
     `INSERT INTO empleados (id, empresaId, nombre, rfc, activo, datosJson, creadoEl) VALUES (?, ?, ?, ?, ?, ?, ?)

@@ -283,6 +283,25 @@ export async function eliminarCliente(id: string): Promise<void> {
   await run("DELETE FROM clientes WHERE id = ?", [id]);
 }
 
+/**
+ * Borra los clientes creados por descarga (origen "descarga") cuyo RFC solo
+ * aparece como receptor de CFDI de nómina (empleados), no de ingresos/egresos.
+ * Corrige el caso en que una sincronización previa metió empleados como
+ * clientes. Devuelve cuántos borró. No toca clientes capturados a mano.
+ */
+export async function eliminarClientesNominaHuerfanos(empresaId: string): Promise<number> {
+  const pool = await db();
+  const [res] = await pool.query(
+    `DELETE FROM clientes
+       WHERE empresaId = ?
+         AND JSON_EXTRACT(datosJson, '$.origen') = 'descarga'
+         AND rfc IN (SELECT DISTINCT receptorRfc FROM cfdi_descargados WHERE empresaId = ? AND tipoComprobante = 'N')
+         AND rfc NOT IN (SELECT DISTINCT receptorRfc FROM cfdi_descargados WHERE empresaId = ? AND tipoComprobante IN ('I','E'))`,
+    [empresaId, empresaId, empresaId],
+  );
+  return (res as { affectedRows?: number }).affectedRows ?? 0;
+}
+
 /* ---------- Productos ---------- */
 
 export async function listarProductos(empresaId: string): Promise<Producto[]> {
