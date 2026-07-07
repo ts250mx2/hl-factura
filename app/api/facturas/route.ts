@@ -11,7 +11,8 @@ export async function GET(req: Request) {
     const estado = url.searchParams.get("estado") ?? undefined;
     const q = url.searchParams.get("q") ?? undefined;
 
-    let empresaIds = ctx.empresas.map((e) => e.id);
+    // Por defecto solo la empresa activa ("Trabajando en"); ?emisorId= la cambia.
+    let empresaIds = ctx.empresaActiva ? [ctx.empresaActiva.id] : [];
     if (emisorId) {
       await requireEmpresa(ctx, emisorId);
       empresaIds = [emisorId];

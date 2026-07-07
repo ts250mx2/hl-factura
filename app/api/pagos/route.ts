@@ -7,7 +7,9 @@ import { ErrorValidacion } from "@/lib/emision";
 export async function GET() {
   try {
     const ctx = await requireCtx();
-    return ok(await listarPagosRep(ctx.empresas.map((e) => e.id)));
+    // Solo la empresa activa ("Trabajando en").
+    const empresaIds = ctx.empresaActiva ? [ctx.empresaActiva.id] : [];
+    return ok(await listarPagosRep(empresaIds));
   } catch (e) {
     return authFail(e);
   }

@@ -30,6 +30,15 @@ const PROBLEMAS = [
   { clave: "efos", label: "Proveedor en 69-B (EFOS)" },
 ];
 
+// Etiqueta legible del tipo de comprobante (TipoDeComprobante del CFDI).
+const TIPO_DOC: Record<string, string> = {
+  I: "Ingreso",
+  E: "Egreso",
+  P: "Pago",
+  N: "Nómina",
+  T: "Traslado",
+};
+
 export default function BovedaPage() {
   const { toast } = useToast();
   const [datos, setDatos] = useState<{ cfdis: CfdiDescargado[]; resumen: Resumen } | null>(null);
@@ -169,9 +178,12 @@ export default function BovedaPage() {
               </div>
               <div className="hidden shrink-0 text-right text-xs text-ink-600 md:block">
                 <p>{c.fecha.slice(0, 10)}</p>
-                <p className="text-[10px] text-ink-400">{c.tipoComprobante ?? ""} {c.formaPago ? `· FP ${c.formaPago}` : ""}</p>
+                <p className="text-[10px] text-ink-400">{c.formaPago ? `FP ${c.formaPago}` : ""}</p>
               </div>
               <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                {c.tipoComprobante && (
+                  <Badge color="slate">{TIPO_DOC[c.tipoComprobante] ?? c.tipoComprobante}</Badge>
+                )}
                 {c.estatusSat === "cancelado" && (
                   <Badge color="amber"><Ban className="size-3" /> Cancelado</Badge>
                 )}

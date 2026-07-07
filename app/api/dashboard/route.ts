@@ -15,8 +15,12 @@ export async function GET() {
   try {
     const ctx = await requireCtx();
     const ahora = new Date();
-    const empresaIds = ctx.empresas.map((e) => e.id);
+    // Las métricas del tablero reflejan la empresa activa ("Trabajando en");
+    // el panel de cumplimiento de abajo sí recorre todas las empresas.
+    const empresaIds = ctx.empresaActiva ? [ctx.empresaActiva.id] : [];
+    const idsTodas = ctx.empresas.map((e) => e.id);
     const facturas = await listarFacturas(empresaIds);
+    const todasFacturas = await listarFacturas(idsTodas);
     const vigentes = facturas.filter((f) => f.estado === "timbrada");
 
     const esDelMes = (iso: string, offset: number) => {
@@ -55,7 +59,7 @@ export async function GET() {
     // Panel de cumplimiento por empresa (para despacho: vista maestra)
     const empresas = [];
     for (const e of ctx.empresas) {
-      const propias = facturas.filter((f) => f.emisorId === e.id);
+      const propias = todasFacturas.filter((f) => f.emisorId === e.id);
       const timbradasEmpresa = propias.filter((f) => f.estado === "timbrada");
       const diasCsd = e.csd
         ? Math.floor((new Date(e.csd.validoHasta).getTime() - ahora.getTime()) / 86_400_000)
@@ -86,7 +90,7 @@ export async function GET() {
       rol: ctx.usuario.rol,
       totales: {
         emisores: ctx.empresas.length,
-        clientes: empresas.reduce((s, e) => s + e.clientes, 0),
+        clientes: ctx.empresaActiva ? (await listarClientes(ctx.empresaActiva.id)).length : 0,
         productos: ctx.empresaActiva ? (await listarProductos(ctx.empresaActiva.id)).length : 0,
         facturas: facturas.length,
         timbradas: vigentes.length,

@@ -6,7 +6,9 @@ import { listarCxp, upsertCxp } from "@/lib/repos";
 export async function GET() {
   try {
     const ctx = await requireCtx();
-    return ok(await listarCxp(ctx.empresas.map((e) => e.id)));
+    // Solo la empresa activa ("Trabajando en").
+    const empresaIds = ctx.empresaActiva ? [ctx.empresaActiva.id] : [];
+    return ok(await listarCxp(empresaIds));
   } catch (e) {
     return authFail(e);
   }

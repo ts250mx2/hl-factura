@@ -12,7 +12,9 @@ export async function GET(req: Request) {
     const problema = url.searchParams.get("problema") ?? undefined;
     const q = url.searchParams.get("q") ?? undefined;
 
-    let empresaIds = ctx.empresas.map((e) => e.id);
+    // Por defecto se consulta solo la empresa activa ("Trabajando en"); se puede
+    // pedir otra empresa explícitamente con ?empresaId=.
+    let empresaIds = ctx.empresaActiva ? [ctx.empresaActiva.id] : [];
     if (empresaId) {
       await requireEmpresa(ctx, empresaId);
       empresaIds = [empresaId];
