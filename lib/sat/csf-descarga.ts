@@ -242,6 +242,24 @@ function construirToken(fiel: NonNullable<Emisor["fiel"]>, tokenuuid: string, ke
   return Buffer.from(`${innerB64}#${firma}`, "utf8").toString("base64");
 }
 
+/** getNotAfter() del cert tal como lo hace el JS del SAT: el valor crudo de la
+ *  fecha notAfter (UTCTime "YYMMDDHHMMSSZ"). El certform lo manda en `fert`. */
+function getNotAfter(cerBuf: Buffer): string {
+  const asn1 = forge.asn1.fromDer(forge.util.createBuffer(cerBuf.toString("binary")));
+  const tbs = (asn1.value as forge.asn1.Asn1[])[0];
+  const validity = (tbs.value as forge.asn1.Asn1[]).find(
+    (n) =>
+      n.type === forge.asn1.Type.SEQUENCE &&
+      Array.isArray(n.value) &&
+      (n.value as forge.asn1.Asn1[]).length === 2 &&
+      (n.value as forge.asn1.Asn1[]).every(
+        (x) => x.type === forge.asn1.Type.UTCTIME || x.type === forge.asn1.Type.GENERALIZEDTIME,
+      ),
+  );
+  const notAfter = validity ? (validity.value as forge.asn1.Asn1[])[1] : undefined;
+  return notAfter ? String(notAfter.value) : "";
+}
+
 function entradaValida(u?: string): string | null {
   if (!u) return null;
   try {
@@ -280,12 +298,15 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
     if (!certform) return { ok: false, pasos, error: "No se encontró el formulario de e.firma." };
 
     // 3) Firmar el reto con la FIEL (desde la base de datos) y colocar el token.
-    const { key } = bytesCertificado(emisor, "fiel");
+    //    El certform también manda en `fert` la fecha de expiración del cert
+    //    (getNotAfter), que el JS del SAT llena al cargar el .cer.
+    const { cer, key } = bytesCertificado(emisor, "fiel");
     pasos.push({
       paso: "FIEL",
       detalle: `tipo ${fiel.tipo} · RFC ${fiel.rfc} · noCert ${fiel.noCertificado} · vence ${(fiel.validoHasta || "").slice(0, 10)} · vigente ${fiel.vigente}`,
     });
     certform.inputs.token = construirToken(fiel, tokenuuid, key);
+    certform.inputs.fert = getNotAfter(cer);
 
     // 4) Enviar la autenticación (el certform postea a su propia URL) y seguir
     //    el regreso SAML hasta el PDF.
