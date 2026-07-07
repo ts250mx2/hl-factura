@@ -8,6 +8,11 @@ import { guardarArchivo, idCsf } from "@/lib/archivos";
 
 // BETA — Descarga la CSF del SAT usando la FIEL de la empresa y, si lo logra,
 // la guarda y actualiza el perfil fiscal (régimen + obligaciones).
+
+// El flujo completo contra el SAT hace ~15 peticiones y puede tardar más de un
+// minuto; sin esto, algunos despliegues cortan la ruta antes de terminar.
+export const maxDuration = 180;
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const ctx = await requireCtx(["admin", "supervisor"]);
@@ -40,6 +45,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return ok({ ok: true, guardado: true, regimenes, obligaciones, pasos: r.pasos });
     }
 
+    // Deja el rastro completo en los logs del servidor: en producción es la
+    // única forma de ver en qué paso se quedó el flujo con el SAT.
+    console.error(`[csf-sat] ${emisor.rfc}: ${r.error}`);
+    for (const p of r.pasos) {
+      console.error(`[csf-sat]   ${p.paso} · ${p.status ?? "-"} · ${p.url ?? ""} · ${p.detalle ?? ""}`);
+    }
     return ok({ ok: false, error: r.error, pasos: r.pasos });
   } catch (e) {
     return authFail(e);

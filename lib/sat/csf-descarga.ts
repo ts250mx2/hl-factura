@@ -445,6 +445,31 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
         "La autenticación con la FIEL fue aceptada, pero el portal de trámites no devolvió el PDF de la CSF. Revisa los pasos (Bóveda/SAML/Reimpresión/Constancia).",
     };
   } catch (e) {
-    return { ok: false, pasos, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, pasos, error: traducirErrorCsf(e) };
   }
+}
+
+/** Convierte errores crudos (red, TLS, descifrado) en mensajes accionables,
+ *  pensados para diagnosticar diferencias entre local y producción. */
+function traducirErrorCsf(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/unable to authenticate data|bad decrypt|unsupported state/i.test(msg)) {
+    return (
+      "No se pudo descifrar la FIEL guardada: el APP_SECRET de este servidor no es el mismo con el que se subió. " +
+      "Configura en producción el mismo APP_SECRET que en el entorno donde se cargó la e.firma (o vuelve a subir el .cer/.key aquí)."
+    );
+  }
+  if (/ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|Tiempo de espera/i.test(msg)) {
+    return (
+      `El servidor no pudo conectarse con el portal del SAT (${msg}). ` +
+      "Verifica que el servidor tenga salida HTTPS directa hacia *.sat.gob.mx (firewall o proxy corporativo la pueden estar bloqueando)."
+    );
+  }
+  if (/SSL|TLS|handshake|cipher/i.test(msg)) {
+    return (
+      `Falló el enlace TLS con el portal del SAT (${msg}). ` +
+      "El portal del SAT usa parámetros TLS débiles; verifica la versión de Node/OpenSSL del servidor (se requiere soporte de SECLEVEL=0)."
+    );
+  }
+  return msg;
 }

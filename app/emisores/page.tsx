@@ -364,6 +364,19 @@ export default function EmisoresPage() {
                   <CloudDownload className="size-4" /> Descargar CSF del SAT (beta)
                 </Button>
               )}
+              {emisor.tieneCsf && (
+                <a
+                  href={`/api/emisores/${emisor.id}/csf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 block"
+                  title="Abre la Constancia de Situación Fiscal guardada"
+                >
+                  <Button variant="ghost" className="w-full text-xs">
+                    <FileText className="size-4" /> Ver CSF guardada
+                  </Button>
+                </a>
+              )}
             </motion.div>
           ))}
         </motion.div>
