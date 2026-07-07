@@ -8,8 +8,9 @@ import {
   guardarPagoRep,
   getPagoRepPorUuid,
   listarBoveda,
+  upsertCfdiDescargado,
 } from "../repos";
-import { leerXml, idCfdi } from "../archivos";
+import { leerXml, guardarArchivo, idCfdi } from "../archivos";
 import { parseCfdiCompleto, type CfdiCompleto, type ConceptoParsed } from "./cfdi-parse";
 import type { Cliente, Producto, Factura, PagoRep, ConceptoFactura, DoctoPago, Emisor } from "../types";
 
@@ -229,13 +230,31 @@ export async function derivarDeCfdi(empresa: Emisor, tipo: "emitida" | "recibida
 
 /** Vuelve a derivar todos los CFDI ya guardados en la bóveda de una empresa
  *  (para poblar la operación con lo que se descargó antes de esta función). */
-export async function derivarBovedaExistente(empresa: Emisor): Promise<{ procesados: number; errores: number }> {
+export async function derivarBovedaExistente(
+  empresa: Emisor,
+): Promise<{ procesados: number; errores: number; migrados: number }> {
   const cfdis = await listarBoveda([empresa.id], { limite: 1000 });
   let procesados = 0;
   let errores = 0;
+  let migrados = 0;
   for (const c of cfdis) {
-    const xml = await leerXml(c.xmlPath ?? idCfdi(empresa.id, c.uuid));
-    if (!xml) continue; // solo metadata, sin XML
+    const marcador = idCfdi(empresa.id, c.uuid);
+    // Busca el XML en la BD (marcador) y, si no está, en el disco por su xmlPath
+    // previo a la migración a base de datos.
+    const xml = await leerXml(marcador, c.xmlPath);
+    if (!xml) continue; // solo metadata o XML no disponible
+    // Migra a la BD los XML que aún viven en disco, para que sean portables
+    // (producción) y el "Descargar XML" de la factura derivada funcione.
+    if (c.xmlPath !== marcador) {
+      try {
+        await guardarArchivo(marcador, "cfdi", "application/xml", `${c.uuid}.xml`, Buffer.from(xml, "utf8"), empresa.id);
+        c.xmlPath = marcador;
+        await upsertCfdiDescargado(c);
+        migrados++;
+      } catch {
+        /* la migración del archivo es best-effort */
+      }
+    }
     try {
       await derivarDeCfdi(empresa, c.tipo, xml);
       procesados++;
@@ -243,5 +262,5 @@ export async function derivarBovedaExistente(empresa: Emisor): Promise<{ procesa
       errores++;
     }
   }
-  return { procesados, errores };
+  return { procesados, errores, migrados };
 }
