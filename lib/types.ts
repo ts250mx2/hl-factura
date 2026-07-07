@@ -58,6 +58,9 @@ export interface Emisor {
   csd?: CertificadoInfo | null;
   fiel?: CertificadoInfo | null;
   creadoEl: string;
+  // Solo en respuestas de la API (no se persiste en la tabla): indica que la
+  // empresa ya tiene una Constancia de Situación Fiscal (PDF) guardada.
+  tieneCsf?: boolean;
 }
 
 export interface Cliente {

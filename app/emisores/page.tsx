@@ -13,6 +13,7 @@ import {
   FileKey2,
   UploadCloud,
   CloudDownload,
+  FileText,
 } from "lucide-react";
 import { api, postJson, ApiError, fechaCorta } from "@/lib/client";
 import { Button, Field, Input, Select, Modal, PageHeader, EmptyState, Badge, Spinner, listContainer, listItem } from "@/components/ui";
@@ -251,7 +252,8 @@ export default function EmisoresPage() {
         { method: "POST" },
       );
       if (r.ok) {
-        toast("success", "CSF descargada del SAT", `Se guardó su perfil fiscal (${r.obligaciones ?? 0} obligación(es)). Consúltala en Contabilidad → Impuestos.`);
+        toast("success", "CSF descargada del SAT", `Se guardó su perfil fiscal (${r.obligaciones ?? 0} obligación(es)). Ábrela con «Ver CSF guardada».`);
+        await cargar();
       } else {
         toast("error", "No se pudo descargar la CSF (beta)", r.error ?? "Revisa el diagnóstico.");
         setDiagCsf({ error: r.error, pasos: r.pasos ?? [] });

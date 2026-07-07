@@ -129,7 +129,9 @@ export default function NuevaFacturaPage() {
     ])
       .then(([e, c, p]) => {
         setEmisores(e);
-        setClientes(c);
+        // Receptores de factura: solo clientes; los proveedores puros derivados
+        // de la bóveda no son facturables (vienen sin uso CFDI ni CP).
+        setClientes(c.filter((x) => x.relacion !== "proveedor"));
         setProductos(p);
         if (e.length === 1) setEmisorId(e[0].id);
       })

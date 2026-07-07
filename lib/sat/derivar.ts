@@ -154,6 +154,8 @@ async function upsertFacturaDescargada(empresa: Emisor, c: CfdiCompleto, cliente
     demo: false,
     origen: "descarga",
     uuid: c.uuid,
+    // El sello permite consultar el estatus del CFDI en el SAT (expresión QR).
+    selloCFD: c.sello,
     fechaTimbrado: c.fechaTimbrado,
     xmlPath: idCfdi(empresa.id, c.uuid),
     emisorRfc: c.emisorRfc,

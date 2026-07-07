@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { Users, Plus, Pencil, Trash2, Search, Mail } from "lucide-react";
+import { Users, Truck, Plus, Pencil, Trash2, Search, Mail } from "lucide-react";
 import { api, postJson, putJson, ApiError } from "@/lib/client";
 import { Button, Field, Input, Select, Modal, PageHeader, EmptyState, Badge, Spinner, listContainer, listItem } from "@/components/ui";
 import { useToast } from "@/components/toast";
@@ -22,6 +23,7 @@ const FORM_VACIO = {
 export default function ClientesPage() {
   const { toast } = useToast();
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
+  const [vista, setVista] = useState<"clientes" | "proveedores">("clientes");
   const [busqueda, setBusqueda] = useState("");
   const [modal, setModal] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
@@ -49,7 +51,16 @@ export default function ClientesPage() {
     return usosPermitidos(form.regimenFiscal, moral);
   }, [form.regimenFiscal, moral, generico]);
 
-  const filtrados = (clientes ?? []).filter((c) => {
+  // Clientes = receptores de tus facturas; proveedores = emisores de los CFDI
+  // que recibes (derivados de la bóveda). "ambos" aparece en las dos vistas y
+  // los capturados a mano (sin relación aún) cuentan como clientes.
+  const esProveedor = (c: Cliente) => c.relacion === "proveedor" || c.relacion === "ambos";
+  const esCliente = (c: Cliente) => c.relacion !== "proveedor";
+  const totalClientes = (clientes ?? []).filter(esCliente).length;
+  const totalProveedores = (clientes ?? []).filter(esProveedor).length;
+
+  const delVista = (clientes ?? []).filter((c) => (vista === "clientes" ? esCliente(c) : esProveedor(c)));
+  const filtrados = delVista.filter((c) => {
     const q = busqueda.toLowerCase();
     return !q || c.nombre.toLowerCase().includes(q) || c.rfc.toLowerCase().includes(q);
   });
@@ -83,6 +94,8 @@ export default function ClientesPage() {
         const res = await postJson<{ advertencias: string[] }>("/api/clientes", form);
         toast("success", "Cliente registrado", `${form.nombre} listo para recibir facturas.`);
         for (const a of res.advertencias ?? []) toast("info", "Advertencia", a);
+        // El alta manual siempre es un cliente: muéstralo donde va a aparecer.
+        setVista("clientes");
       }
       setModal(false);
       await cargar();
@@ -117,8 +130,8 @@ export default function ClientesPage() {
   return (
     <div>
       <PageHeader
-        title="Clientes"
-        subtitle="Los receptores de tus facturas, con los datos de su Constancia de Situación Fiscal (CFDI 4.0 valida nombre, régimen y código postal)."
+        title="Clientes y proveedores"
+        subtitle="Los receptores de tus facturas y los emisores de los CFDI que recibes, con los datos de su Constancia de Situación Fiscal (CFDI 4.0 valida nombre, régimen y código postal)."
         actions={
           <Button onClick={abrirNuevo}>
             <Plus className="size-4" /> Nuevo cliente
@@ -126,7 +139,34 @@ export default function ClientesPage() {
         }
       />
 
-      {clientes && clientes.length > 0 && (
+      <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <button onClick={() => setVista("clientes")} className={`card p-4 text-left transition ${vista === "clientes" ? "ring-2 ring-emerald-500" : "opacity-80 hover:opacity-100"}`}>
+          <div className="flex items-center gap-3">
+            <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${vista === "clientes" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-600"}`}>
+              <Users className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-ink-900">Clientes</p>
+              <p className="truncate text-xs text-ink-600">Todos los receptores de tus facturas</p>
+            </div>
+            <p className="tnum ml-auto text-2xl font-extrabold text-ink-900">{totalClientes}</p>
+          </div>
+        </button>
+        <button onClick={() => setVista("proveedores")} className={`card p-4 text-left transition ${vista === "proveedores" ? "ring-2 ring-amber-500" : "opacity-80 hover:opacity-100"}`}>
+          <div className="flex items-center gap-3">
+            <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${vista === "proveedores" ? "bg-amber-500 text-white" : "bg-amber-50 text-amber-600"}`}>
+              <Truck className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-ink-900">Proveedores</p>
+              <p className="truncate text-xs text-ink-600">Todos los emisores de tus CFDI recibidos</p>
+            </div>
+            <p className="tnum ml-auto text-2xl font-extrabold text-ink-900">{totalProveedores}</p>
+          </div>
+        </button>
+      </div>
+
+      {delVista.length > 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative mb-4 max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
           <Input
@@ -139,15 +179,39 @@ export default function ClientesPage() {
       )}
 
       {clientes === null ? (
-        <Spinner label="Cargando clientes…" />
-      ) : clientes.length === 0 ? (
+        <Spinner label="Cargando clientes y proveedores…" />
+      ) : delVista.length === 0 ? (
+        vista === "clientes" ? (
+          <EmptyState
+            icon={<Users className="size-7" />}
+            title="Registra a tu primer cliente"
+            detail="Con CFDI 4.0 el SAT valida que el nombre, régimen fiscal y código postal del receptor coincidan con su constancia. Captúralos bien una vez y factúrale siempre en segundos."
+            action={
+              <Button onClick={abrirNuevo}>
+                <Plus className="size-4" /> Nuevo cliente
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={<Truck className="size-7" />}
+            title="Sin proveedores todavía"
+            detail="Los proveedores se llenan solos con los CFDI que recibes: tráelos del SAT con la descarga masiva a la bóveda y sincronízala a operación."
+            action={
+              <Link href="/boveda">
+                <Button variant="secondary">Ir a la bóveda CFDI</Button>
+              </Link>
+            }
+          />
+        )
+      ) : filtrados.length === 0 ? (
         <EmptyState
-          icon={<Users className="size-7" />}
-          title="Registra a tu primer cliente"
-          detail="Con CFDI 4.0 el SAT valida que el nombre, régimen fiscal y código postal del receptor coincidan con su constancia. Captúralos bien una vez y factúrale siempre en segundos."
+          icon={<Search className="size-7" />}
+          title="Sin resultados"
+          detail={`Ningún ${vista === "clientes" ? "cliente" : "proveedor"} coincide con “${busqueda}”.`}
           action={
-            <Button onClick={abrirNuevo}>
-              <Plus className="size-4" /> Nuevo cliente
+            <Button variant="secondary" onClick={() => setBusqueda("")}>
+              Limpiar búsqueda
             </Button>
           }
         />

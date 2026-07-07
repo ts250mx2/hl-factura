@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { FileText, FilePlus2, Search } from "lucide-react";
 import { api, mxn, fechaCorta } from "@/lib/client";
 import { Badge, Button, Input, PageHeader, EmptyState, Spinner, listContainer, listItem } from "@/components/ui";
+import { FiltroPeriodo, usePeriodo } from "@/components/filtro-periodo";
 import type { Factura } from "@/lib/types";
 
 const FILTROS = [
@@ -27,6 +28,7 @@ export default function FacturasPage() {
   const [facturas, setFacturas] = useState<Factura[] | null>(null);
   const [filtro, setFiltro] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const periodoCtrl = usePeriodo(); // default: este mes (fecha de emisión)
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -37,6 +39,10 @@ export default function FacturasPage() {
     }, 200);
     return () => clearTimeout(t);
   }, [filtro, busqueda]);
+
+  // El periodo filtra sobre la fecha de emisión del CFDI, en el navegador.
+  const filtradas = (facturas ?? []).filter((f) => periodoCtrl.enPeriodo(f.fecha));
+  const hayFiltros = Boolean(filtro || busqueda || periodoCtrl.desde || periodoCtrl.hasta);
 
   return (
     <div>
@@ -69,6 +75,7 @@ export default function FacturasPage() {
             </button>
           ))}
         </div>
+        <FiltroPeriodo ctrl={periodoCtrl} />
         <div className="relative max-w-xs flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
           <Input className="pl-9" placeholder="Cliente, RFC, folio o UUID…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
@@ -77,24 +84,35 @@ export default function FacturasPage() {
 
       {facturas === null ? (
         <Spinner label="Cargando facturas…" />
-      ) : facturas.length === 0 ? (
+      ) : filtradas.length === 0 ? (
         <EmptyState
           icon={<FileText className="size-7" />}
-          title={filtro || busqueda ? "Sin resultados" : "Todavía no hay facturas"}
-          detail={filtro || busqueda ? "Prueba con otro filtro o búsqueda." : "Cuando emitas tu primer CFDI aparecerá aquí con su folio fiscal y estatus."}
+          title={hayFiltros ? "Sin resultados" : "Todavía no hay facturas"}
+          detail={hayFiltros ? "Prueba con otro filtro, búsqueda o periodo." : "Cuando emitas tu primer CFDI aparecerá aquí con su folio fiscal y estatus."}
           action={
-            !filtro && !busqueda ? (
+            hayFiltros ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setFiltro("");
+                  setBusqueda("");
+                  periodoCtrl.aplicar("");
+                }}
+              >
+                Limpiar filtros
+              </Button>
+            ) : (
               <Link href="/facturas/nueva">
                 <Button>
                   <FilePlus2 className="size-4" /> Emitir factura
                 </Button>
               </Link>
-            ) : undefined
+            )
           }
         />
       ) : (
         <motion.div variants={listContainer} initial="hidden" animate="show" className="card divide-y divide-slate-100 overflow-hidden">
-          {facturas.map((f) => {
+          {filtradas.map((f) => {
             const badge = ESTADO_BADGE[f.estado] ?? ESTADO_BADGE.borrador;
             return (
               <motion.div key={f.id} variants={listItem}>

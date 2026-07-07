@@ -7,6 +7,7 @@ import {
   DateTimePeriod,
   DownloadType,
   RequestType,
+  DocumentStatus,
   CfdiPackageReader,
   MetadataPackageReader,
 } from "@nodecfdi/sat-ws-descarga-masiva";
@@ -67,7 +68,7 @@ export interface SolicitudArgs {
 
 export async function solicitarDescarga(emisor: Emisor, args: SolicitudArgs) {
   const service = crearServicio(emisor);
-  const parameters = QueryParameters.create()
+  let parameters = QueryParameters.create()
     .withPeriod(
       DateTimePeriod.createFromValues(
         `${args.fechaInicio} 00:00:00`,
@@ -76,6 +77,14 @@ export async function solicitarDescarga(emisor: Emisor, args: SolicitudArgs) {
     )
     .withDownloadType(new DownloadType(args.tipo === "emitidas" ? "issued" : "received"))
     .withRequestType(new RequestType(args.formato === "xml" ? "xml" : "metadata"));
+
+  // El SAT no permite descargar el XML de CFDI recibidos que estén cancelados:
+  // la solicitud debe pedir explícitamente solo vigentes (EstadoComprobante=Vigente),
+  // si no, la rechaza con "XML Mal Formado". Para ver también los cancelados de
+  // proveedores está el formato metadata, que sí los admite.
+  if (args.tipo === "recibidas" && args.formato === "xml") {
+    parameters = parameters.withDocumentStatus(new DocumentStatus("active"));
+  }
 
   let query;
   try {

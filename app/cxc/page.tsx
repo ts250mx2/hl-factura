@@ -7,6 +7,7 @@ import { Wallet, Mail, HandCoins } from "lucide-react";
 import { api, postJson, ApiError, mxn } from "@/lib/client";
 import { Badge, Button, PageHeader, EmptyState, Spinner, listContainer, listItem } from "@/components/ui";
 import { useToast } from "@/components/toast";
+import { FiltroPeriodo, usePeriodo } from "@/components/filtro-periodo";
 import type { Factura } from "@/lib/types";
 
 interface ItemCartera {
@@ -43,6 +44,7 @@ export default function CxcPage() {
   const { toast } = useToast();
   const [datos, setDatos] = useState<{ items: ItemCartera[]; resumen: ResumenCartera } | null>(null);
   const [filtro, setFiltro] = useState("");
+  const periodoCtrl = usePeriodo(); // default: este mes (fecha de emisión de la factura)
   const [enviando, setEnviando] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
@@ -67,8 +69,20 @@ export default function CxcPage() {
 
   if (!datos) return <Spinner label="Calculando cartera…" />;
 
-  const items = filtro ? datos.items.filter((i) => i.bucket === filtro) : datos.items;
-  const max = Math.max(...BUCKETS.map((b) => datos.resumen.buckets[b.clave]?.total ?? 0), 1);
+  // El periodo filtra por la fecha de emisión de la factura; el resumen de
+  // cartera se recalcula sobre ese subconjunto para que cuadre con la lista.
+  const delPeriodo = datos.items.filter((i) => periodoCtrl.enPeriodo(i.factura.fecha));
+  const resumen: ResumenCartera = {
+    totalCartera: delPeriodo.reduce((s, i) => s + i.saldo, 0),
+    facturas: delPeriodo.length,
+    buckets: delPeriodo.reduce<ResumenCartera["buckets"]>((acc, i) => {
+      const b = acc[i.bucket] ?? { total: 0, cantidad: 0 };
+      acc[i.bucket] = { total: b.total + i.saldo, cantidad: b.cantidad + 1 };
+      return acc;
+    }, {}),
+  };
+  const items = filtro ? delPeriodo.filter((i) => i.bucket === filtro) : delPeriodo;
+  const max = Math.max(...BUCKETS.map((b) => resumen.buckets[b.clave]?.total ?? 0), 1);
 
   return (
     <div>
@@ -84,20 +98,25 @@ export default function CxcPage() {
         }
       />
 
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <FiltroPeriodo ctrl={periodoCtrl} />
+        <p className="text-xs text-ink-400">Filtra por la fecha de emisión de la factura.</p>
+      </div>
+
       {/* Resumen de cartera */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card mb-6 p-5">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-600">Cartera total</p>
             <p className="tnum text-3xl font-extrabold tracking-tight text-brand-700">
-              {mxn.format(datos.resumen.totalCartera)}
+              {mxn.format(resumen.totalCartera)}
             </p>
           </div>
-          <p className="text-sm text-ink-600">{datos.resumen.facturas} factura(s) con saldo</p>
+          <p className="text-sm text-ink-600">{resumen.facturas} factura(s) con saldo</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-5">
           {BUCKETS.map((b) => {
-            const info = datos.resumen.buckets[b.clave] ?? { total: 0, cantidad: 0 };
+            const info = resumen.buckets[b.clave] ?? { total: 0, cantidad: 0 };
             const activo = filtro === b.clave;
             return (
               <button
@@ -123,8 +142,19 @@ export default function CxcPage() {
       {items.length === 0 ? (
         <EmptyState
           icon={<Wallet className="size-7" />}
-          title={filtro ? "Nada en este rango" : "¡Cartera limpia!"}
-          detail={filtro ? "Prueba con otro rango de antigüedad." : "No hay facturas PPD con saldo pendiente de cobro."}
+          title={filtro || periodoCtrl.desde || periodoCtrl.hasta ? "Nada con estos filtros" : "¡Cartera limpia!"}
+          detail={
+            filtro || periodoCtrl.desde || periodoCtrl.hasta
+              ? "Prueba con otro rango de antigüedad o periodo. Ojo: las facturas vencidas de meses anteriores no aparecen en «Este mes»."
+              : "No hay facturas PPD con saldo pendiente de cobro."
+          }
+          action={
+            periodoCtrl.desde || periodoCtrl.hasta ? (
+              <Button variant="secondary" onClick={() => periodoCtrl.aplicar("")}>
+                Ver cualquier fecha
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <motion.div variants={listContainer} initial="hidden" animate="show" className="card divide-y divide-slate-100">

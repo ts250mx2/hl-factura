@@ -6,6 +6,7 @@ import { UsersRound, Plus, Trash2, BadgeDollarSign, PlayCircle, Stamp, FileDown,
 import { api, postJson, putJson, ApiError, mxn, fechaCorta } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner, listContainer, listItem } from "@/components/ui";
 import { useToast } from "@/components/toast";
+import { FiltroPeriodo, usePeriodo } from "@/components/filtro-periodo";
 import {
   PERIODICIDADES_PAGO,
   TIPOS_CONTRATO,
@@ -38,6 +39,7 @@ export default function NominaPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<string>("empleados");
   const [busqueda, setBusqueda] = useState("");
+  const periodoCtrl = usePeriodo(); // recibos: default este mes (fecha de pago)
   const [empleados, setEmpleados] = useState<Empleado[] | null>(null);
   const [recibos, setRecibos] = useState<ReciboNomina[]>([]);
   const [config, setConfig] = useState<ConfigNomina | null>(null);
@@ -179,7 +181,9 @@ export default function NominaPage() {
     !q || e.nombre.toLowerCase().includes(q) || e.rfc.toLowerCase().includes(q) || e.numEmpleado.toLowerCase().includes(q) || e.nss.includes(q);
   const empleadosFiltrados = (empleados ?? []).filter(coincide);
   const enCorrida = (empleados ?? []).filter((e) => e.activo && seleccion[e.id] && coincide(e));
-  const recibosFiltrados = q ? recibos.filter((r) => r.empleadoNombre.toLowerCase().includes(q)) : recibos;
+  const recibosFiltrados = recibos.filter(
+    (r) => (!q || r.empleadoNombre.toLowerCase().includes(q)) && periodoCtrl.enPeriodo(r.fechaPago),
+  );
   const periodosRecibos = [...new Set(recibosFiltrados.map((r) => r.periodoInicio))];
 
   return (
@@ -219,6 +223,7 @@ export default function NominaPage() {
               />
             </motion.div>
           )}
+          {tab === "recibos" && <FiltroPeriodo ctrl={periodoCtrl} />}
           {tab === "empleados" && (
             <Button onClick={() => { setFormEmp(FORM_EMP_VACIO); setModalEmp(true); }} className="ml-auto">
               <Plus className="size-4" /> Nuevo empleado
@@ -357,7 +362,16 @@ export default function NominaPage() {
                 {recibos.length === 0 ? (
                   <EmptyState icon={<Stamp className="size-7" />} title="Sin recibos" detail="Timbra tu primera corrida en la pestaña «Calcular y timbrar»." />
                 ) : recibosFiltrados.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-ink-400">Ningún recibo coincide con «{busqueda}».</p>
+                  <div className="py-8 text-center">
+                    <p className="text-sm text-ink-400">
+                      {q ? `Ningún recibo coincide con «${busqueda}» en el periodo elegido.` : "Sin recibos en el periodo elegido."}
+                    </p>
+                    {(periodoCtrl.desde || periodoCtrl.hasta) && (
+                      <button onClick={() => periodoCtrl.aplicar("")} className="mt-2 text-xs font-semibold text-brand-600 hover:underline">
+                        Ver cualquier fecha
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <div className="space-y-5">
                     {periodosRecibos.map((periodo) => {

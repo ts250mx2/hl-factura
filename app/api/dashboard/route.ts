@@ -78,7 +78,8 @@ export async function GET() {
         conError: propias.filter((f) => f.estado === "error").length,
         facturadoMes:
           Math.round(timbradasEmpresa.filter((f) => esDelMes(f.creadoEl, 0)).reduce((s, f) => s + f.total, 0) * 100) / 100,
-        clientes: (await listarClientes(e.id)).length,
+        // Solo clientes (receptores); los proveedores puros de la bóveda no cuentan.
+        clientes: (await listarClientes(e.id)).filter((c) => c.relacion !== "proveedor").length,
       });
     }
 
@@ -90,7 +91,9 @@ export async function GET() {
       rol: ctx.usuario.rol,
       totales: {
         emisores: ctx.empresas.length,
-        clientes: ctx.empresaActiva ? (await listarClientes(ctx.empresaActiva.id)).length : 0,
+        clientes: ctx.empresaActiva
+          ? (await listarClientes(ctx.empresaActiva.id)).filter((c) => c.relacion !== "proveedor").length
+          : 0,
         productos: ctx.empresaActiva ? (await listarProductos(ctx.empresaActiva.id)).length : 0,
         facturas: facturas.length,
         timbradas: vigentes.length,

@@ -48,6 +48,18 @@ export async function eliminarArchivo(id: string): Promise<void> {
   await pool.query("DELETE FROM archivos WHERE id = ?", [id]);
 }
 
+/** IDs de empresa (de las dadas) que tienen un archivo de la categoría indicada.
+ *  Sirve para marcar en una lista qué empresas ya tienen su CSF guardada. */
+export async function empresasConArchivo(categoria: string, empresaIds: string[]): Promise<Set<string>> {
+  if (!empresaIds.length) return new Set();
+  const pool = await db();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT DISTINCT empresaId FROM archivos WHERE categoria = ? AND empresaId IN (${empresaIds.map(() => "?").join(",")})`,
+    [categoria, ...empresaIds],
+  );
+  return new Set(rows.map((r) => String(r.empresaId)));
+}
+
 /** Texto (XML) desde la BD, con respaldo a disco para datos previos a la migración. */
 export async function leerXml(id: string, rutaFallback?: string | null): Promise<string | null> {
   const buf = await leerArchivo(id);

@@ -158,6 +158,9 @@ export interface CfdiCompleto extends DatosCfdi {
   moneda?: string;
   tipoCambio?: number;
   usoCfdi?: string;
+  // Sello digital del emisor (Comprobante/@Sello); sus últimos 8 caracteres
+  // forman la expresión impresa (QR) con la que se consulta el estatus al SAT.
+  sello?: string;
   subTotal: number;
   descuento: number;
   totalTraslados: number;
@@ -358,6 +361,12 @@ function parseNomina(comp: Nodo): NominaParsed | undefined {
   };
 }
 
+/** Sello digital del emisor (Comprobante/@Sello), base de la expresión impresa/QR. */
+export function selloDelXml(xml: string): string | undefined {
+  const comp = nodo(parser.parse(xml) as Nodo, "Comprobante");
+  return attr(comp, "Sello") ?? attr(comp, "sello");
+}
+
 /** CFDI completo para derivar clientes/productos/facturas/pagos. */
 export function parseCfdiCompleto(xml: string): CfdiCompleto {
   const base = parseCfdiBasico(xml);
@@ -372,6 +381,7 @@ export function parseCfdiCompleto(xml: string): CfdiCompleto {
     ...base,
     serie: attr(comp, "Serie"),
     folio: attr(comp, "Folio"),
+    sello: attr(comp, "Sello") ?? attr(comp, "sello"),
     moneda: attr(comp, "Moneda") ?? "MXN",
     tipoCambio: attr(comp, "TipoCambio") ? num(attr(comp, "TipoCambio")) : undefined,
     usoCfdi: attr(receptor, "UsoCFDI"),

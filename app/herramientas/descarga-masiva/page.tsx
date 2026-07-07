@@ -247,6 +247,12 @@ export default function DescargaMasivaPage() {
               <Input type="date" value={form.fechaFin} onChange={(e) => setForm({ ...form, fechaFin: e.target.value })} />
             </Field>
           </div>
+          {form.tipo === "recibidas" && form.formato === "xml" && (
+            <p className="rounded-lg bg-sky-50 p-3 text-xs leading-relaxed text-sky-900">
+              El SAT solo entrega el XML de los CFDI recibidos <b>vigentes</b>. Si también quieres ver los
+              cancelados de tus proveedores, usa el formato «Solo metadata».
+            </p>
+          )}
           <Button onClick={crear} loading={creando} className="w-full" disabled={!empresaActiva || !fielLista}>
             <CloudDownload className="size-4" /> Presentar solicitud al SAT
           </Button>

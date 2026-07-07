@@ -3,6 +3,7 @@ import { requireCtx, authFail } from "@/lib/auth";
 import { listarEmpresas, insertarEmpresa, genId, certificadoPublico } from "@/lib/repos";
 import { validarRfc, esPersonaMoral } from "@/lib/sat/rfc";
 import { REGIMENES_FISCALES } from "@/lib/sat/catalogos";
+import { empresasConArchivo } from "@/lib/archivos";
 import type { Emisor } from "@/lib/types";
 
 const COLORES = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
@@ -18,7 +19,8 @@ function sinSecretos(e: Emisor) {
 export async function GET() {
   try {
     const ctx = await requireCtx();
-    return ok(ctx.empresas.map(sinSecretos));
+    const conCsf = await empresasConArchivo("csf", ctx.empresas.map((e) => e.id));
+    return ok(ctx.empresas.map((e) => ({ ...sinSecretos(e), tieneCsf: conCsf.has(e.id) })));
   } catch (e) {
     return authFail(e);
   }

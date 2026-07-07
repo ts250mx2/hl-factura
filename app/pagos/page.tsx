@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { HandCoins, Plus, FileDown, Ban } from "lucide-react";
+import { HandCoins, Plus, FileDown, Ban, Search } from "lucide-react";
 import { api, postJson, ApiError, mxn, fechaCorta } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner, listContainer, listItem } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { useSesion } from "@/components/session-provider";
+import { FiltroPeriodo, usePeriodo } from "@/components/filtro-periodo";
 import { FORMAS_PAGO } from "@/lib/sat/catalogos";
 import type { PagoRep, Factura } from "@/lib/types";
 
@@ -24,11 +25,21 @@ const ESTADO_BADGE: Record<string, { color: "green" | "red" | "amber" | "slate";
   error: { color: "amber", label: "Error" },
 };
 
+const FILTROS_ESTADO = [
+  { clave: "", label: "Todos" },
+  { clave: "timbrada", label: "Timbrados" },
+  { clave: "cancelada", label: "Cancelados" },
+  { clave: "error", label: "Con error" },
+] as const;
+
 export default function PagosPage() {
   const { toast } = useToast();
   const { sesion } = useSesion();
   const [pagos, setPagos] = useState<PagoRep[] | null>(null);
   const [cartera, setCartera] = useState<ItemCartera[]>([]);
+  const [filtro, setFiltro] = useState("");
+  const periodoCtrl = usePeriodo(); // default: este mes
+  const [busqueda, setBusqueda] = useState("");
   const [modal, setModal] = useState(false);
   const [clienteId, setClienteId] = useState("");
   const [seleccion, setSeleccion] = useState<Record<string, string>>({}); // facturaId → monto
@@ -71,6 +82,25 @@ export default function PagosPage() {
 
   const facturasDelCliente = carteraEmpresa.filter((i) => i.factura.clienteId === clienteId);
   const totalPago = Object.values(seleccion).reduce((s, v) => s + (Number(v) || 0), 0);
+
+  const filtrados = (pagos ?? []).filter((p) => {
+    if (filtro && p.estado !== filtro) return false;
+    if (!periodoCtrl.enPeriodo(p.fechaPago)) return false;
+    const q = busqueda.toLowerCase();
+    return (
+      !q ||
+      p.receptorNombre.toLowerCase().includes(q) ||
+      p.receptorRfc.toLowerCase().includes(q) ||
+      `${p.serie}-${p.folio}`.toLowerCase().includes(q) ||
+      (p.uuid ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const limpiarFiltros = () => {
+    setFiltro("");
+    periodoCtrl.aplicar("");
+    setBusqueda("");
+  };
 
   const abrir = () => {
     setClienteId(clientesConSaldo[0]?.id ?? "");
@@ -135,6 +165,32 @@ export default function PagosPage() {
         }
       />
 
+      {pagos && pagos.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="flex rounded-xl bg-slate-100 p-1">
+            {FILTROS_ESTADO.map((f) => (
+              <button
+                key={f.clave}
+                onClick={() => setFiltro(f.clave)}
+                className={`relative rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
+                  filtro === f.clave ? "text-white" : "text-ink-600 hover:text-ink-900"
+                }`}
+              >
+                {filtro === f.clave && (
+                  <motion.span layoutId="pagos-pill" className="absolute inset-0 rounded-lg bg-gradient-to-r from-brand-600 to-violet-600 shadow" />
+                )}
+                <span className="relative">{f.label}</span>
+              </button>
+            ))}
+          </div>
+          <FiltroPeriodo ctrl={periodoCtrl} />
+          <div className="relative max-w-xs flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+            <Input className="pl-9" placeholder="Cliente, RFC, folio o UUID…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+          </div>
+        </div>
+      )}
+
       {pagos === null ? (
         <Spinner label="Cargando complementos…" />
       ) : pagos.length === 0 ? (
@@ -154,9 +210,20 @@ export default function PagosPage() {
             ) : undefined
           }
         />
+      ) : filtrados.length === 0 ? (
+        <EmptyState
+          icon={<Search className="size-7" />}
+          title="Sin resultados"
+          detail="Ningún complemento coincide con los filtros elegidos."
+          action={
+            <Button variant="secondary" onClick={limpiarFiltros}>
+              Limpiar filtros
+            </Button>
+          }
+        />
       ) : (
         <motion.div variants={listContainer} initial="hidden" animate="show" className="card divide-y divide-slate-100">
-          {pagos.map((p) => {
+          {filtrados.map((p) => {
             const badge = ESTADO_BADGE[p.estado] ?? { color: "slate" as const, label: p.estado };
             return (
               <motion.div key={p.id} variants={listItem} className="flex items-center gap-4 px-5 py-3.5">

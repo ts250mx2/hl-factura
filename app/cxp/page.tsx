@@ -6,6 +6,7 @@ import { CalendarClock, ShieldX, AlertTriangle, Ban, CheckCircle2 } from "lucide
 import { api, putJson, ApiError, mxn } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner, listContainer, listItem } from "@/components/ui";
 import { useToast } from "@/components/toast";
+import { FiltroPeriodo, usePeriodo } from "@/components/filtro-periodo";
 
 interface CxpItem {
   uuid: string;
@@ -36,6 +37,7 @@ export default function CxpPage() {
   const { toast } = useToast();
   const [items, setItems] = useState<CxpItem[] | null>(null);
   const [filtro, setFiltro] = useState("");
+  const periodoCtrl = usePeriodo(); // default: este mes (fecha del CFDI)
   const [editando, setEditando] = useState<CxpItem | null>(null);
   const [estadoPago, setEstadoPago] = useState("programada");
   const [fechaProg, setFechaProg] = useState("");
@@ -50,16 +52,22 @@ export default function CxpPage() {
     cargar().catch(() => setItems([]));
   }, [cargar]);
 
-  const visibles = (items ?? []).filter((i) => !filtro || i.estadoPago === filtro);
+  // El periodo filtra por la fecha del CFDI del proveedor.
+  const delPeriodo = useMemo(
+    () => (items ?? []).filter((i) => periodoCtrl.enPeriodo(i.fecha)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, periodoCtrl.desde, periodoCtrl.hasta],
+  );
+  const visibles = delPeriodo.filter((i) => !filtro || i.estadoPago === filtro);
 
   const porPagar = useMemo(() => {
-    const pendientes = (items ?? []).filter((i) => i.estadoPago !== "pagada" && i.estatusSat !== "cancelado");
+    const pendientes = delPeriodo.filter((i) => i.estadoPago !== "pagada" && i.estatusSat !== "cancelado");
     return {
       total: pendientes.reduce((s, i) => s + i.total, 0),
       cantidad: pendientes.length,
       bloqueados: pendientes.filter((i) => i.deducible !== "ok").length,
     };
-  }, [items]);
+  }, [delPeriodo]);
 
   const abrirEditar = (item: CxpItem) => {
     setEditando(item);
@@ -106,6 +114,7 @@ export default function CxpPage() {
           {porPagar.bloqueados > 0 && (
             <Badge color="red">{porPagar.bloqueados} con problema fiscal — revisa antes de pagar</Badge>
           )}
+          <FiltroPeriodo ctrl={periodoCtrl} />
           <div className="ml-auto flex rounded-xl bg-slate-100 p-1">
             {FILTROS.map((f) => (
               <button
@@ -128,8 +137,19 @@ export default function CxpPage() {
       ) : visibles.length === 0 ? (
         <EmptyState
           icon={<CalendarClock className="size-7" />}
-          title={filtro ? "Nada con este filtro" : "Sin CFDI de proveedores"}
-          detail="Los comprobantes recibidos llegan aquí desde la Bóveda (sincronización con el SAT o importación de XML)."
+          title={filtro || periodoCtrl.desde || periodoCtrl.hasta ? "Nada con estos filtros" : "Sin CFDI de proveedores"}
+          detail={
+            filtro || periodoCtrl.desde || periodoCtrl.hasta
+              ? "Prueba con otro estado o periodo. Ojo: los CFDI pendientes de meses anteriores no aparecen en «Este mes»."
+              : "Los comprobantes recibidos llegan aquí desde la Bóveda (sincronización con el SAT o importación de XML)."
+          }
+          action={
+            periodoCtrl.desde || periodoCtrl.hasta ? (
+              <Button variant="secondary" onClick={() => periodoCtrl.aplicar("")}>
+                Ver cualquier fecha
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <motion.div variants={listContainer} initial="hidden" animate="show" className="card divide-y divide-slate-100">
