@@ -102,6 +102,11 @@ export async function listarPolizas(empresaId: string, anio: string, mes: string
   return r.map(mapPoliza);
 }
 
+export async function getPoliza(empresaId: string, id: string): Promise<Poliza | null> {
+  const r = await rows("SELECT * FROM polizas WHERE empresaId = ? AND id = ?", [empresaId, id]);
+  return r[0] ? mapPoliza(r[0]) : null;
+}
+
 export async function polizasHasta(empresaId: string, anio: string, mes: string): Promise<Poliza[]> {
   // Todas las pólizas ANTERIORES al periodo (para el saldo inicial de la balanza)
   const r = await rows(

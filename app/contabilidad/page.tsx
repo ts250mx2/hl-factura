@@ -63,6 +63,35 @@ interface RenglonBalanza {
   saldoFinal: number;
 }
 
+interface MovimientoAuxiliar {
+  polizaId: string;
+  tipo: string;
+  numero: number;
+  fecha: string;
+  concepto: string;
+  origenTipo: string;
+  origenId: string;
+  debe: number;
+  haber: number;
+  saldo: number;
+}
+
+interface Auxiliar {
+  cuenta: CuentaContable | null;
+  saldoInicial: number;
+  movimientos: MovimientoAuxiliar[];
+  totalDebe: number;
+  totalHaber: number;
+  saldoFinal: number;
+}
+
+interface OrigenPoliza {
+  tipo: string;
+  id: string;
+  href?: string;
+  label: string;
+}
+
 interface LineaEstado {
   codigo: string;
   nombre: string;
@@ -192,6 +221,11 @@ export default function ContabilidadPage() {
   const [formRegla, setFormRegla] = useState({ criterio: "rfc", valor: "", cuentaCodigo: "", nota: "" });
   const [guardando, setGuardando] = useState(false);
 
+  // Drill-down: auxiliar de una cuenta y detalle de una póliza.
+  const [auxiliar, setAuxiliar] = useState<Auxiliar | null>(null);
+  const [cargandoAux, setCargandoAux] = useState(false);
+  const [polizaDet, setPolizaDet] = useState<{ poliza: Poliza; origen: OrigenPoliza } | null>(null);
+
   const [modalRegimen, setModalRegimen] = useState(false);
   const [formRegimen, setFormRegimen] = useState({ clave: "626", fechaInicio: "" });
   const [modalObligacion, setModalObligacion] = useState(false);
@@ -200,6 +234,27 @@ export default function ContabilidadPage() {
   const csfInput = useRef<HTMLInputElement>(null);
 
   const periodo = `anio=${anio}&mes=${mes}`;
+
+  const abrirAuxiliar = async (codigo: string) => {
+    setAuxiliar(null);
+    setCargandoAux(true);
+    try {
+      setAuxiliar(await api<Auxiliar>(`/api/contabilidad/auxiliar?${periodo}&cuenta=${encodeURIComponent(codigo)}`));
+    } catch (e) {
+      setCargandoAux(false);
+      toast("error", "No se pudo abrir el auxiliar", e instanceof ApiError ? e.message : String(e));
+      return;
+    }
+    setCargandoAux(false);
+  };
+
+  const abrirPoliza = async (id: string) => {
+    try {
+      setPolizaDet(await api<{ poliza: Poliza; origen: OrigenPoliza }>(`/api/contabilidad/poliza?id=${id}`));
+    } catch (e) {
+      toast("error", "No se pudo abrir la póliza", e instanceof ApiError ? e.message : String(e));
+    }
+  };
 
   const cargar = useCallback(async () => {
     try {
@@ -510,6 +565,7 @@ export default function ContabilidadPage() {
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-bold">Balanza de comprobación · {MESES[Number(mes) - 1]} {anio}</h2>
                     <Badge color={balanza.cuadrada ? "green" : "red"}>{balanza.cuadrada ? "Cuadrada" : "¡Descuadrada!"}</Badge>
+                    <span className="hidden text-[11px] text-ink-400 sm:inline">· clic en una cuenta para ver su auxiliar</span>
                   </div>
                   <div className="flex gap-2">
                     <a href={`/api/contabilidad/exportar?tipo=catalogo&${periodo}`}>
@@ -536,7 +592,15 @@ export default function ContabilidadPage() {
                       </thead>
                       <tbody>
                         {balanza.renglones.map((r) => (
-                          <tr key={r.cuenta.codigo} className="border-b border-slate-50">
+                          <tr
+                            key={r.cuenta.codigo}
+                            onClick={() => abrirAuxiliar(r.cuenta.codigo)}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirAuxiliar(r.cuenta.codigo); } }}
+                            tabIndex={0}
+                            role="button"
+                            className="cursor-pointer border-b border-slate-50 transition hover:bg-brand-50/50 focus:bg-brand-50"
+                            title="Ver auxiliar (movimientos) de la cuenta"
+                          >
                             <td className="py-2 pr-3"><span className="mono text-[10px] text-ink-400">{r.cuenta.codigo}</span> {r.cuenta.nombre}</td>
                             <td className="tnum py-2 pr-3 text-right">{mxn.format(r.saldoInicial)}</td>
                             <td className="tnum py-2 pr-3 text-right">{mxn.format(r.debe)}</td>
@@ -1236,6 +1300,120 @@ export default function ContabilidadPage() {
           <Field label="Fecha de inicio (opcional)"><Input type="date" value={formObligacion.fechaInicio} onChange={(e) => setFormObligacion({ ...formObligacion, fechaInicio: e.target.value })} /></Field>
           <Button onClick={guardarObligacion} className="w-full">Agregar obligación</Button>
         </div>
+      </Modal>
+
+      {/* Auxiliar (mayor) de una cuenta */}
+      <Modal
+        open={cargandoAux || Boolean(auxiliar)}
+        onClose={() => { setAuxiliar(null); setCargandoAux(false); }}
+        title={auxiliar?.cuenta ? `Auxiliar · ${auxiliar.cuenta.codigo} ${auxiliar.cuenta.nombre}` : "Auxiliar de la cuenta"}
+        subtitle={`Movimientos de ${MESES[Number(mes) - 1]} ${anio}. Haz clic en un renglón para ver su póliza.`}
+        wide
+      >
+        {cargandoAux || !auxiliar ? (
+          <Spinner label="Cargando auxiliar…" />
+        ) : (
+          <div className="max-h-[70vh] overflow-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white">
+                <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-ink-400">
+                  <th className="py-2 pr-2">Fecha</th>
+                  <th className="py-2 pr-2">Póliza</th>
+                  <th className="py-2 pr-2">Concepto</th>
+                  <th className="py-2 pr-2 text-right">Debe</th>
+                  <th className="py-2 pr-2 text-right">Haber</th>
+                  <th className="py-2 text-right">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-100 text-ink-500">
+                  <td className="py-2 pr-2" colSpan={5}>Saldo inicial</td>
+                  <td className="tnum py-2 text-right font-semibold">{mxn.format(auxiliar.saldoInicial)}</td>
+                </tr>
+                {auxiliar.movimientos.map((m, i) => (
+                  <tr
+                    key={`${m.polizaId}-${i}`}
+                    onClick={() => abrirPoliza(m.polizaId)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirPoliza(m.polizaId); } }}
+                    tabIndex={0}
+                    role="button"
+                    className="cursor-pointer border-b border-slate-50 transition hover:bg-brand-50/50 focus:bg-brand-50"
+                    title="Ver póliza"
+                  >
+                    <td className="py-2 pr-2 text-ink-600">{m.fecha}</td>
+                    <td className="py-2 pr-2"><span className="mono text-[10px] uppercase text-ink-400">{m.tipo}-{m.numero}</span></td>
+                    <td className="py-2 pr-2">{m.concepto}</td>
+                    <td className="tnum py-2 pr-2 text-right">{m.debe ? mxn.format(m.debe) : ""}</td>
+                    <td className="tnum py-2 pr-2 text-right">{m.haber ? mxn.format(m.haber) : ""}</td>
+                    <td className="tnum py-2 text-right font-semibold">{mxn.format(m.saldo)}</td>
+                  </tr>
+                ))}
+                {auxiliar.movimientos.length === 0 && (
+                  <tr><td className="py-6 text-center text-ink-400" colSpan={6}>Sin movimientos en el periodo.</td></tr>
+                )}
+                <tr className="border-t-2 border-slate-300 font-extrabold">
+                  <td className="py-2 pr-2" colSpan={3}>Totales del periodo</td>
+                  <td className="tnum py-2 pr-2 text-right">{mxn.format(auxiliar.totalDebe)}</td>
+                  <td className="tnum py-2 pr-2 text-right">{mxn.format(auxiliar.totalHaber)}</td>
+                  <td className="tnum py-2 text-right">{mxn.format(auxiliar.saldoFinal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
+
+      {/* Detalle de una póliza + enlace a su documento de origen */}
+      <Modal
+        open={Boolean(polizaDet)}
+        onClose={() => setPolizaDet(null)}
+        title={polizaDet ? `Póliza ${polizaDet.poliza.tipo.toUpperCase()}-${polizaDet.poliza.numero} · ${polizaDet.poliza.fecha}` : "Póliza"}
+        subtitle={polizaDet?.poliza.concepto}
+        wide
+      >
+        {polizaDet && (
+          <div className="space-y-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-ink-400">
+                    <th className="py-2 pr-3">Cuenta</th>
+                    <th className="py-2 pr-3 text-right">Debe</th>
+                    <th className="py-2 text-right">Haber</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {polizaDet.poliza.movimientos.map((m, i) => (
+                    <tr key={i} className="border-b border-slate-50">
+                      <td className="py-2 pr-3"><span className="mono text-[10px] text-ink-400">{m.cuenta}</span> {m.nombreCuenta}</td>
+                      <td className="tnum py-2 pr-3 text-right">{m.debe ? mxn.format(m.debe) : ""}</td>
+                      <td className="tnum py-2 text-right">{m.haber ? mxn.format(m.haber) : ""}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-slate-300 font-extrabold">
+                    <td className="py-2 pr-3">Sumas</td>
+                    <td className="tnum py-2 pr-3 text-right">{mxn.format(polizaDet.poliza.total)}</td>
+                    <td className="tnum py-2 text-right">{mxn.format(polizaDet.poliza.total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+              <div className="text-xs">
+                <p className="text-ink-400">Documento de origen</p>
+                <p className="font-semibold text-ink-900">
+                  {polizaDet.origen.label}
+                  {polizaDet.origen.tipo === "gasto" && <span className="mono ml-1 text-[10px] text-ink-400">{polizaDet.origen.id.slice(0, 8)}…</span>}
+                </p>
+              </div>
+              {polizaDet.origen.href && (
+                <a href={polizaDet.origen.href} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" className="px-3 py-2 text-xs">Abrir origen</Button>
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
