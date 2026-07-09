@@ -19,10 +19,10 @@ const URLS_69B = [
   "http://omawww.sat.gob.mx/cifras_sat/Documents/Listado_Completo_69-B.csv",
 ];
 
-const RFC_RE = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{2}[0-9A]$/;
+export const RFC_RE = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{2}[0-9A]$/;
 
 /** Parser CSV mínimo con soporte de comillas (los nombres traen comas). */
-function parseCsvLinea(linea: string): string[] {
+export function parseCsvLinea(linea: string): string[] {
   const campos: string[] = [];
   let actual = "";
   let enComillas = false;

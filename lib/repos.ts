@@ -551,6 +551,25 @@ export async function emisoresRecibidosDistintos(): Promise<string[]> {
   return r.map((x) => String(x.emisorRfc));
 }
 
+/** Empresas (del despacho) que recibieron CFDI de cada RFC dado — para avisar
+ *  cuando un proveedor aparece en una lista negra. Uno por (empresa, emisor). */
+export async function empresasQueRecibieronDe(
+  rfcs: string[],
+): Promise<{ empresaId: string; emisorRfc: string; emisorNombre: string }[]> {
+  if (rfcs.length === 0) return [];
+  const r = await rows(
+    `SELECT empresaId, emisorRfc, MAX(emisorNombre) AS emisorNombre
+     FROM cfdi_descargados WHERE tipo = 'recibida' AND emisorRfc IN (?)
+     GROUP BY empresaId, emisorRfc`,
+    [rfcs],
+  );
+  return r.map((x) => ({
+    empresaId: String(x.empresaId),
+    emisorRfc: String(x.emisorRfc),
+    emisorNombre: String(x.emisorNombre ?? ""),
+  }));
+}
+
 export async function cfdisRecibidosPorEmisor(situacionRfcs: string[]): Promise<CfdiDescargado[]> {
   if (situacionRfcs.length === 0) return [];
   const r = await rows(
@@ -624,6 +643,21 @@ export async function existeAlerta(despachoId: string, tipo: string, uuid: strin
   return r.length > 0;
 }
 
+/** Como existeAlerta pero acotada a una empresa (para avisos por empresa que
+ *  comparten la misma clave uuid, p. ej. un proveedor recibido por varias). */
+export async function existeAlertaEmpresa(
+  despachoId: string,
+  empresaId: string,
+  tipo: string,
+  uuid: string,
+): Promise<boolean> {
+  const r = await rows(
+    "SELECT 1 AS x FROM alertas WHERE despachoId = ? AND empresaId = ? AND tipo = ? AND uuid = ? LIMIT 1",
+    [despachoId, empresaId, tipo, uuid],
+  );
+  return r.length > 0;
+}
+
 /* ---------- EFOS (lista 69-B) ---------- */
 
 export async function reemplazarEfos(lista: { rfc: string; nombre: string; situacion: string }[]): Promise<void> {
@@ -660,6 +694,49 @@ export async function rfcsEnSituacion(situaciones: string[]): Promise<{ rfc: str
   if (!situaciones.length) return [];
   const r = await rows("SELECT rfc, nombre, situacion FROM efos WHERE situacion IN (?)", [situaciones]);
   return r.map((x) => ({ rfc: String(x.rfc), nombre: String(x.nombre ?? ""), situacion: String(x.situacion) }));
+}
+
+/* ---------- Lista negra del Artículo 69 (incumplidos / no localizados) ---------- */
+
+/** Reemplaza en la tabla del 69 solo las categorías (supuestos) indicadas, para
+ *  que una descarga parcial no borre las categorías que no se pudieron bajar. */
+export async function reemplazarLista69(
+  lista: { rfc: string; nombre: string; supuesto: string }[],
+  supuestos: string[],
+): Promise<void> {
+  const pool = await db();
+  if (supuestos.length) await pool.query("DELETE FROM lista69 WHERE supuesto IN (?)", [supuestos]);
+  const ahora = new Date().toISOString();
+  const LOTE = 500;
+  for (let i = 0; i < lista.length; i += LOTE) {
+    const bloque = lista.slice(i, i + LOTE);
+    const values = bloque.map(() => "(?, ?, ?, ?)").join(",");
+    const params = bloque.flatMap((e) => [e.rfc, e.supuesto, e.nombre.slice(0, 490), ahora]);
+    await pool.query(
+      `INSERT INTO lista69 (rfc, supuesto, nombre, actualizadoEl) VALUES ${values}
+       ON DUPLICATE KEY UPDATE nombre = VALUES(nombre), actualizadoEl = VALUES(actualizadoEl)`,
+      params,
+    );
+  }
+}
+
+/** RFC → lista de supuestos (categorías) en que aparece en el Artículo 69. */
+export async function buscarLista69(rfcs: string[]): Promise<Map<string, string[]>> {
+  const resultado = new Map<string, string[]>();
+  if (rfcs.length === 0) return resultado;
+  const r = await rows("SELECT rfc, supuesto FROM lista69 WHERE rfc IN (?)", [rfcs]);
+  for (const x of r) {
+    const rfc = String(x.rfc);
+    const lista = resultado.get(rfc) ?? [];
+    lista.push(String(x.supuesto));
+    resultado.set(rfc, lista);
+  }
+  return resultado;
+}
+
+export async function estadoLista69(): Promise<{ total: number; actualizadoEl: string | null }> {
+  const r = await rows("SELECT COUNT(DISTINCT rfc) AS n, MAX(actualizadoEl) AS f FROM lista69");
+  return { total: Number(r[0].n), actualizadoEl: r[0].f ? String(r[0].f) : null };
 }
 
 /* ---------- Configuración y registro de sincronización ---------- */

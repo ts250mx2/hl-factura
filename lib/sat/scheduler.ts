@@ -1,11 +1,12 @@
 import { despachosConSync } from "../repos";
 import { ejecutarSincronizacion, procesarPendientes } from "./sincronizador";
 import { actualizarListaEfos } from "./efos";
+import { actualizarLista69 } from "./lista69";
 
 // Scheduler integrado: corre dentro del proceso del servidor Next.js.
 //  - Cada minuto revisa si algún despacho tiene programada su corrida nocturna.
 //  - Cada 10 minutos avanza las solicitudes pendientes ante el SAT.
-//  - La corrida nocturna además refresca la lista EFOS 69-B.
+//  - La corrida nocturna además refresca las listas negras 69-B (EFOS) y 69.
 
 declare global {
   // eslint-disable-next-line no-var
@@ -43,10 +44,16 @@ async function tickNocturno() {
         try {
           const r = await actualizarListaEfos();
           console.log(`[sync] Lista EFOS actualizada: ${r.total} RFCs, ${r.afectados} CFDI afectados`);
-          efosActualizado = true;
         } catch (e) {
           console.error("[sync] No se pudo actualizar EFOS:", e instanceof Error ? e.message : e);
         }
+        try {
+          const r = await actualizarLista69();
+          console.log(`[sync] Lista 69 actualizada: ${r.total} RFCs, ${r.afectados} proveedor(es) con aviso`);
+        } catch (e) {
+          console.error("[sync] No se pudo actualizar la lista 69:", e instanceof Error ? e.message : e);
+        }
+        efosActualizado = true;
       }
       try {
         const r = await ejecutarSincronizacion(despachoId);

@@ -296,6 +296,14 @@ const DDL: string[] = [
     PRIMARY KEY (empresaId, clave, periodo),
     KEY idx_periodo (empresaId, periodo)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS lista69 (
+    rfc VARCHAR(13) NOT NULL,
+    supuesto VARCHAR(40) NOT NULL,
+    nombre VARCHAR(500) NULL,
+    actualizadoEl VARCHAR(32) NOT NULL,
+    PRIMARY KEY (rfc, supuesto),
+    KEY idx_rfc (rfc)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 // Cambios sobre tablas ya existentes: se aplican en cada arranque ignorando

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FlaskConical, Zap, Save, ExternalLink, MoonStar, ShieldX, RefreshCcw, CloudDownload, Mail } from "lucide-react";
+import { FlaskConical, Zap, Save, ExternalLink, MoonStar, ShieldX, ShieldAlert, RefreshCcw, CloudDownload, Mail, Search, ShieldCheck } from "lucide-react";
 import { api, putJson, postJson, ApiError, fechaLarga } from "@/lib/client";
 import { Badge, Button, Field, Input, PageHeader, Spinner } from "@/components/ui";
 import { useToast } from "@/components/toast";
@@ -40,20 +40,27 @@ export default function ConfiguracionPage() {
   const [guardando, setGuardando] = useState(false);
   const [sync, setSync] = useState<ConfigSync | null>(null);
   const [efos, setEfos] = useState<{ total: number; actualizadoEl: string | null } | null>(null);
+  const [lista69, setLista69] = useState<{ total: number; actualizadoEl: string | null } | null>(null);
   const [registros, setRegistros] = useState<RegistroSync[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
   const [actualizandoEfos, setActualizandoEfos] = useState(false);
+  const [actualizando69, setActualizando69] = useState(false);
+  const [rfcConsulta, setRfcConsulta] = useState("");
+  const [consultando, setConsultando] = useState(false);
+  const [resultado, setResultado] = useState<{ rfc: string; efos: string | null; lista69: string[] } | null>(null);
   const [smtp, setSmtp] = useState({ host: "", port: 587, seguro: false, user: "", from: "", recordatoriosAuto: false });
   const [smtpPass, setSmtpPass] = useState("");
   const [probandoSmtp, setProbandoSmtp] = useState(false);
 
   const cargarExtras = useCallback(async () => {
     try {
-      const [e, s] = await Promise.all([
+      const [e, l, s] = await Promise.all([
         api<{ total: number; actualizadoEl: string | null }>("/api/sat/efos"),
+        api<{ total: number; actualizadoEl: string | null }>("/api/sat/lista69"),
         api<{ registros: RegistroSync[] }>("/api/sat/sincronizar"),
       ]);
       setEfos(e);
+      setLista69(l);
       setRegistros(s.registros);
     } catch {}
   }, []);
@@ -126,6 +133,39 @@ export default function ConfiguracionPage() {
       toast("error", "No se pudo actualizar EFOS", e instanceof ApiError ? e.message : String(e));
     } finally {
       setActualizandoEfos(false);
+    }
+  };
+
+  const actualizar69 = async () => {
+    setActualizando69(true);
+    try {
+      const r = await postJson<{ total: number; categorias: number; fallidas: string[]; afectados: number }>("/api/sat/lista69", {});
+      toast(
+        "success",
+        `Lista del Artículo 69 actualizada: ${r.total.toLocaleString("es-MX")} RFCs`,
+        r.afectados > 0
+          ? `¡Atención! ${r.afectados} proveedor(es) de tu bóveda aparecen en la lista. Revisa las alertas.`
+          : `Ningún proveedor de tu bóveda aparece en la lista.${r.fallidas.length ? ` (${r.fallidas.length} categoría(s) no se pudieron bajar)` : ""}`,
+      );
+      await cargarExtras();
+    } catch (e) {
+      toast("error", "No se pudo actualizar la lista 69", e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setActualizando69(false);
+    }
+  };
+
+  const consultarRfc = async () => {
+    const rfc = rfcConsulta.trim().toUpperCase();
+    if (!rfc) return;
+    setConsultando(true);
+    setResultado(null);
+    try {
+      setResultado(await api<{ rfc: string; efos: string | null; lista69: string[] }>(`/api/sat/consulta-rfc?rfc=${encodeURIComponent(rfc)}`));
+    } catch (e) {
+      toast("error", "No se pudo consultar", e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setConsultando(false);
     }
   };
 
@@ -317,6 +357,85 @@ export default function ConfiguracionPage() {
           el comprobante se bloquea para deducción y se genera una alerta crítica. La lista también se refresca
           automáticamente en cada corrida nocturna.
         </p>
+      </motion.div>
+
+      {/* Lista Artículo 69 (incumplidos / no localizados) */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card mt-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+              <ShieldAlert className="size-6" />
+            </div>
+            <div>
+              <p className="font-bold">Lista negra del SAT (Artículo 69 · incumplidos)</p>
+              <p className="text-xs text-ink-600">
+                {lista69 && lista69.total > 0
+                  ? `${lista69.total.toLocaleString("es-MX")} RFCs en la lista · actualizada ${lista69.actualizadoEl ? fechaLarga(lista69.actualizadoEl) : ""}`
+                  : "Aún no se ha descargado. Incluye no localizados, créditos firmes/cancelados, condonados y sentencias."}
+              </p>
+            </div>
+          </div>
+          <Button variant="secondary" onClick={actualizar69} loading={actualizando69}>
+            <RefreshCcw className="size-4" /> {lista69 && lista69.total > 0 ? "Actualizar lista" : "Descargar lista"}
+          </Button>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-ink-400">
+          A diferencia del 69-B, el Artículo 69 <b>no bloquea</b> la deducción, pero si un proveedor tuyo aparece
+          (por ejemplo «no localizado» o con «créditos firmes») se genera un aviso: conviene revisar la materialidad
+          de esas operaciones.
+        </p>
+      </motion.div>
+
+      {/* Consulta de un RFC contra las listas negras */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card mt-4 p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-brand-100 text-brand-600">
+            <Search className="size-6" />
+          </div>
+          <div>
+            <p className="font-bold">Consulta de RFC en listas negras</p>
+            <p className="text-xs text-ink-600">Verifica a un cliente o proveedor antes de operar con él (usa las listas ya descargadas).</p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <Field label="RFC a consultar" className="min-w-56 flex-1">
+            <Input
+              value={rfcConsulta}
+              onChange={(e) => setRfcConsulta(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && consultarRfc()}
+              placeholder="XAXX010101000"
+              maxLength={13}
+              className="mono uppercase"
+            />
+          </Field>
+          <Button onClick={consultarRfc} loading={consultando} disabled={!rfcConsulta.trim()}>
+            <Search className="size-4" /> Consultar
+          </Button>
+        </div>
+        {resultado && (
+          <div className="mt-3 rounded-xl border border-slate-200 p-3">
+            <p className="mono text-sm font-bold text-ink-900">{resultado.rfc}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {!resultado.efos && resultado.lista69.length === 0 ? (
+                <Badge color="green"><ShieldCheck className="size-3" /> Sin coincidencias en las listas descargadas</Badge>
+              ) : (
+                <>
+                  {resultado.efos && (
+                    <Badge color={resultado.efos === "Presunto" || resultado.efos === "Definitivo" ? "red" : "slate"}>
+                      69-B / EFOS: {resultado.efos}
+                    </Badge>
+                  )}
+                  {resultado.lista69.map((s) => (
+                    <Badge key={s} color="amber">Art. 69: {s}</Badge>
+                  ))}
+                </>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-ink-400">
+              Resultado contra las listas ya descargadas. Actualízalas arriba para tener la versión más reciente del SAT.
+            </p>
+          </div>
+        )}
       </motion.div>
 
       {/* Correo (recordatorios de cobranza) */}
