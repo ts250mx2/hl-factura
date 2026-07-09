@@ -26,6 +26,7 @@ import {
   Calculator,
   UsersRound,
   ArrowLeftRight,
+  TrendingUp,
 } from "lucide-react";
 import { useSesion } from "./session-provider";
 import type { Rol } from "@/lib/types";
@@ -44,6 +45,7 @@ const NAV: Item[] = [
   { href: "/cxc", label: "Por cobrar", icon: Wallet },
   { href: "/conciliacion", label: "Conciliación", icon: ArrowLeftRight, roles: ["admin", "supervisor", "auxiliar"] },
   { href: "/cxp", label: "Por pagar", icon: CalendarClock },
+  { href: "/flujo", label: "Flujo de efectivo", icon: TrendingUp },
   { href: "/boveda", label: "Bóveda CFDI", icon: Archive },
   { href: "/contabilidad", label: "Contabilidad", icon: Calculator, roles: ["admin", "supervisor", "auxiliar"] },
   { href: "/calendario", label: "Calendario fiscal", icon: CalendarCheck, roles: ["admin", "supervisor", "auxiliar"] },
