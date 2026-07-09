@@ -6,11 +6,13 @@ import { db } from "./sql";
 // depender de archivos físicos y poder trabajar en local y en producción con
 // los mismos datos. Claves lógicas (id):
 //   csf:<empresaId>                CSF (PDF)
+//   opinion:<empresaId>            Opinión de Cumplimiento 32-D (PDF)
 //   cfdi:<empresaId>:<uuid>        CFDI descargado (XML)
 //   emitido:<factura|pago|recibo>:<id>   CFDI emitido (XML)
 //   paquete:<packageId>           paquete de descarga masiva (ZIP)
 
 export const idCsf = (empresaId: string) => `csf:${empresaId}`;
+export const idOpinion = (empresaId: string) => `opinion:${empresaId}`;
 export const idCfdi = (empresaId: string, uuid: string) => `cfdi:${empresaId}:${uuid}`;
 export const idEmitido = (tipo: "factura" | "pago" | "recibo", id: string) => `emitido:${tipo}:${id}`;
 export const idPaquete = (packageId: string) => `paquete:${packageId}`;

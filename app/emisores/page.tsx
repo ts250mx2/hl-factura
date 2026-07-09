@@ -170,6 +170,7 @@ export default function EmisoresPage() {
   const [csfFile, setCsfFile] = useState<File | null>(null);
   const [parsingCsf, setParsingCsf] = useState(false);
   const [csfSat, setCsfSat] = useState<string | null>(null);
+  const [opinionSat, setOpinionSat] = useState<string | null>(null);
   const [diagCsf, setDiagCsf] = useState<{ error?: string; pasos: { paso: string; url?: string; status?: number; detalle?: string }[] } | null>(null);
 
   const cargar = useCallback(async () => {
@@ -262,6 +263,44 @@ export default function EmisoresPage() {
       toast("error", "Error al descargar la CSF", e instanceof ApiError ? e.message : String(e));
     } finally {
       setCsfSat(null);
+    }
+  };
+
+  const SENTIDO_LABEL: Record<string, string> = {
+    positiva: "Positiva",
+    negativa: "Negativa",
+    sin_obligaciones: "Sin obligaciones",
+    desconocido: "Descargada (revisa el PDF)",
+  };
+
+  const descargarOpinion = async (emisor: Emisor) => {
+    setOpinionSat(emisor.id);
+    setDiagCsf(null);
+    try {
+      const r = await api<{
+        ok: boolean;
+        opinion?: { sentido: string; folio?: string };
+        error?: string;
+        pasos: { paso: string; url?: string; status?: number; detalle?: string }[];
+      }>(`/api/emisores/${emisor.id}/opinion-sat`, { method: "POST" });
+      if (r.ok) {
+        const sentido = r.opinion?.sentido ?? "desconocido";
+        toast(
+          sentido === "negativa" ? "error" : "success",
+          `Opinión 32-D: ${SENTIDO_LABEL[sentido] ?? sentido}`,
+          sentido === "negativa"
+            ? "El SAT reporta incumplimientos. Abre el PDF para ver el detalle."
+            : "Se guardó el PDF; ábrelo con «Ver opinión guardada».",
+        );
+        await cargar();
+      } else {
+        toast("error", "No se pudo descargar la opinión (beta)", r.error ?? "Revisa el diagnóstico.");
+        setDiagCsf({ error: r.error, pasos: r.pasos ?? [] });
+      }
+    } catch (e) {
+      toast("error", "Error al descargar la opinión", e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setOpinionSat(null);
     }
   };
 
@@ -375,6 +414,48 @@ export default function EmisoresPage() {
                   <Button variant="ghost" className="w-full text-xs">
                     <FileText className="size-4" /> Ver CSF guardada
                   </Button>
+                </a>
+              )}
+              {emisor.fiel && (
+                <Button
+                  variant="ghost"
+                  className="mt-2 w-full text-xs"
+                  loading={opinionSat === emisor.id}
+                  onClick={() => descargarOpinion(emisor)}
+                  title="Autentica en el SAT con la FIEL y baja la Opinión de Cumplimiento (Art. 32-D)"
+                >
+                  <ShieldCheck className="size-4" /> Opinión de cumplimiento 32-D (beta)
+                </Button>
+              )}
+              {emisor.opinion32d && (
+                <a
+                  href={`/api/emisores/${emisor.id}/opinion`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 block"
+                  title="Abre la opinión de cumplimiento guardada"
+                >
+                  <div
+                    className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-bold ${
+                      emisor.opinion32d.sentido === "positiva"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : emisor.opinion32d.sentido === "negativa"
+                          ? "bg-rose-50 text-rose-700"
+                          : "bg-slate-50 text-ink-600"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {emisor.opinion32d.sentido === "negativa" ? (
+                        <ShieldAlert className="size-3.5" />
+                      ) : (
+                        <ShieldCheck className="size-3.5" />
+                      )}
+                      Opinión 32-D: {SENTIDO_LABEL[emisor.opinion32d.sentido] ?? emisor.opinion32d.sentido}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-medium opacity-70">
+                      {fechaCorta(emisor.opinion32d.fecha)}
+                    </span>
+                  </div>
                 </a>
               )}
             </motion.div>

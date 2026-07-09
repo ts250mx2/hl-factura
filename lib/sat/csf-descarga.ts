@@ -50,7 +50,7 @@ export interface ResultadoCsf {
   error?: string;
 }
 
-type Jar = Map<string, Map<string, string>>;
+export type Jar = Map<string, Map<string, string>>;
 
 interface Resp {
   status: number;
@@ -104,7 +104,7 @@ function headerCookies(jar: Jar, u: string): string {
   return m ? [...m.entries()].map(([k, v]) => `${k}=${v}`).join("; ") : "";
 }
 
-interface Salto {
+export interface Salto {
   status: number;
   headers: Record<string, string | string[] | undefined>;
   body: Buffer;
@@ -119,7 +119,7 @@ interface Init {
 }
 
 /** Hace una petición siguiendo redirecciones HTTP (no ejecuta JavaScript). */
-async function hop(jar: Jar, url: string, init: Init, pasos: PasoDiag[], etiqueta: string): Promise<Salto> {
+export async function hop(jar: Jar, url: string, init: Init, pasos: PasoDiag[], etiqueta: string): Promise<Salto> {
   let actual = url;
   let method = init.method || "GET";
   let body = init.body;
@@ -154,9 +154,9 @@ async function hop(jar: Jar, url: string, init: Init, pasos: PasoDiag[], etiquet
   throw new Error("Demasiadas redirecciones");
 }
 
-const texto = (s: Salto) => s.body.toString("utf8");
+export const texto = (s: Salto) => s.body.toString("utf8");
 
-function esPdf(s: Salto): boolean {
+export function esPdf(s: Salto): boolean {
   const ct = (s.headers["content-type"] as string) || "";
   return ct.includes("application/pdf") || (s.body.length > 4 && s.body.subarray(0, 5).toString("latin1") === "%PDF-");
 }
@@ -166,7 +166,7 @@ function esAutoSubmit(html: string): boolean {
   return /document\.forms\[0\]\.submit\(\)/i.test(html) && /<form/i.test(html);
 }
 
-interface Formulario {
+export interface Formulario {
   action: string;
   method: string;
   inputs: Record<string, string>;
@@ -199,7 +199,7 @@ function* formularios(html: string): Generator<{ abre: string; cuerpo: string }>
 }
 
 /** Extrae el primer <form> de la página con sus campos (name→value). */
-function parseForm(html: string): Formulario | null {
+export function parseForm(html: string): Formulario | null {
   for (const f of formularios(html)) return parseBloque(f.abre, f.cuerpo);
   return null;
 }
@@ -207,7 +207,7 @@ function parseForm(html: string): Formulario | null {
 /** Extrae el <form> que contiene un campo dado (por name o id). La página del
  *  certform trae DOS formularios (el de la plantilla gob.mx y el real
  *  id="certform"); hay que elegir el que tiene el input `token`. */
-function parseFormConCampo(html: string, campo: string): Formulario | null {
+export function parseFormConCampo(html: string, campo: string): Formulario | null {
   const re = new RegExp(`(?:name|id)\\s*=\\s*"${campo}"`, "i");
   for (const f of formularios(html)) {
     if (re.test(f.cuerpo) || re.test(f.abre)) return parseBloque(f.abre, f.cuerpo);
@@ -215,7 +215,7 @@ function parseFormConCampo(html: string, campo: string): Formulario | null {
   return null;
 }
 
-async function enviarForm(jar: Jar, form: Formulario, base: string, pasos: PasoDiag[], etiqueta: string): Promise<Salto> {
+export async function enviarForm(jar: Jar, form: Formulario, base: string, pasos: PasoDiag[], etiqueta: string): Promise<Salto> {
   const actionUrl = new URL(form.action || base, base).toString();
   if (form.method === "get") {
     const u = new URL(actionUrl);
@@ -231,7 +231,7 @@ async function enviarForm(jar: Jar, form: Formulario, base: string, pasos: PasoD
 
 /** Reenvía en cadena los formularios auto-enviados hasta el PDF, el certform o
  *  una página estable (sin auto-submit). */
-async function seguirAutoSubmit(jar: Jar, s: Salto, pasos: PasoDiag[], etiqueta: string): Promise<Salto> {
+export async function seguirAutoSubmit(jar: Jar, s: Salto, pasos: PasoDiag[], etiqueta: string): Promise<Salto> {
   for (let i = 0; i < 10; i++) {
     if (esPdf(s)) return s;
     const html = texto(s);
@@ -336,7 +336,7 @@ function getNotAfter(cerBuf: Buffer): string {
   return raw.length > 13 ? raw.slice(-13) : raw;
 }
 
-function entradaValida(u?: string): string | null {
+export function entradaValida(u?: string): string | null {
   if (!u) return null;
   try {
     const url = new URL(u);
@@ -346,91 +346,125 @@ function entradaValida(u?: string): string | null {
   }
 }
 
+/** Firma el certform de e.firma del SAT. Recibe el HTML de la página que trae
+ *  el <form id="certform"> con el reto (tokenuuid/guid) y devuelve ese form con
+ *  los campos token+fert añadidos, listo para postear con enviarForm. Es la
+ *  ÚNICA pieza del login e.firma común a la CSF (flujo SAML) y a la opinión
+ *  32-D (flujo OAuth/cloud); el resto de cada flujo difiere. */
+export function firmarCertform(
+  emisor: Emisor,
+  html: string,
+  pasos: PasoDiag[],
+): { ok: true; form: Formulario } | { ok: false; error: string } {
+  const fiel = emisor.fiel;
+  if (!fiel) return { ok: false, error: "Esta empresa no tiene FIEL (e.firma) cargada." };
+  if (!/id="tokenuuid"/i.test(html)) {
+    return { ok: false, error: "No se llegó a la página de e.firma del SAT (el portal pudo cambiar). Revisa los pasos." };
+  }
+
+  const tokenuuid = attrDe(html.match(/id="tokenuuid"[^>]*>/i)?.[0] || "", "value") || "";
+  if (!tokenuuid) return { ok: false, error: "El SAT no entregó el reto (tokenuuid)." };
+  // El JS del SAT firma el value del input name="guid" (el mismo <input> que
+  // trae id="tokenuuid", con idéntico value). Se prefiere `guid` por fidelidad;
+  // se registra la comparación para detectar si el SAT los llegara a separar.
+  const guidVal = attrDe(html.match(/name="guid"[^>]*>/i)?.[0] || "", "value") || "";
+  const reto = guidVal || tokenuuid;
+  pasos.push({
+    paso: "Reto",
+    detalle: `tokenuuid=${tokenuuid.slice(0, 12)}… · guid=${(guidVal || "(sin campo)").slice(0, 12)}… · coinciden=${guidVal === tokenuuid}`,
+  });
+  // La página trae DOS <form>; hay que tomar el que contiene el campo `token`
+  // (id="certform"), no el primero (plantilla gob.mx).
+  const certform = parseFormConCampo(html, "token") || parseForm(html);
+  if (!certform) return { ok: false, error: "No se encontró el formulario de e.firma." };
+
+  // Firmar el reto con la FIEL (desde la base de datos) y colocar el token.
+  // El certform también manda en `fert` la fecha de expiración del cert
+  // (getNotAfter), que el JS del SAT llena al cargar el .cer.
+  const { cer, key } = bytesCertificado(emisor, "fiel");
+  pasos.push({
+    paso: "FIEL",
+    detalle: `tipo ${fiel.tipo} · RFC ${fiel.rfc} · noCert ${fiel.noCertificado} · vence ${(fiel.validoHasta || "").slice(0, 10)} · vigente ${fiel.vigente}`,
+  });
+  certform.inputs.token = construirToken(fiel, reto, key);
+  certform.inputs.fert = getNotAfter(cer);
+  return { ok: true, form: certform };
+}
+
+/** Autentica la e.firma en un portal del SAT partiendo de su URL lanzadora
+ *  (lanzador.jsf?...&tipoLogeo=f) o de la página que lleve al certform. Deja la
+ *  sesión NIDP en el `jar` y devuelve el último salto. Si el portal entrega un
+ *  PDF directamente (algunos trámites lo hacen), lo reporta como estado "pdf".
+ *  Es la pieza común de la CSF y la opinión de cumplimiento (32-D). */
+export async function autenticarFielEnPortal(
+  emisor: Emisor,
+  entry: string,
+  jar: Jar,
+  pasos: PasoDiag[],
+): Promise<{ estado: "pdf" | "ok"; s: Salto } | { estado: "error"; error: string }> {
+  const fiel = emisor.fiel;
+  if (!fiel) return { estado: "error", error: "Esta empresa no tiene FIEL (e.firma) cargada." };
+
+  // 1) Entrar al lanzador y seguir hasta la página de e.firma (certform).
+  let s = await hop(jar, entry, { method: "GET" }, pasos, "Entrada");
+  s = await seguirAutoSubmit(jar, s, pasos, "SSO");
+  let html = texto(s);
+
+  if (esPdf(s)) return { estado: "pdf", s };
+
+  // 2-3) Firmar el certform con la FIEL.
+  const firma = firmarCertform(emisor, html, pasos);
+  if (!firma.ok) return { estado: "error", error: firma.error };
+
+  // 4) Enviar la autenticación (el certform postea a su propia URL). El NIDP
+  //    responde con una página que finaliza la sesión por window.location; no
+  //    hace falta seguirla: la cookie de sesión ya quedó fijada por este POST.
+  s = await enviarForm(jar, firma.form, s.url, pasos, "Autenticación");
+  s = await seguirAutoSubmit(jar, s, pasos, "Autenticación");
+
+  if (esPdf(s)) return { estado: "pdf", s };
+
+  // Diagnóstico de la autenticación. El certform del SAT trae SIEMPRE los textos
+  // "revocada"/"no vigente" en su JS (mensajes predefinidos); el error REAL lo
+  // inyecta el servidor en `var error = '...'` (vacío = sin error). Si el
+  // certform reaparece, la firma no fue aceptada.
+  html = texto(s);
+  const certReaparece = /id="tokenuuid"/i.test(html);
+  const errorSat = (html.match(/var\s+error\s*=\s*'([^']*)'/i)?.[1] || "").trim();
+  const cuerpo = html.replace(/\s+/g, " ").trim().slice(0, 400);
+  const setCk = (s.headers["set-cookie"] as string[] | undefined)?.length || 0;
+  pasos.push({
+    paso: "Autenticación (resultado)",
+    status: s.status,
+    detalle: `${(s.headers["content-type"] as string) || ""} · ${s.body.length} bytes · certform=${certReaparece} · set-cookie=${setCk} · error="${errorSat || "(vacío)"}" · cuerpo="${cuerpo}"`,
+  });
+
+  if (errorSat) {
+    return { estado: "error", error: `El SAT rechazó la e.firma: ${errorSat}.` };
+  }
+  if (certReaparece || s.status >= 400) {
+    return {
+      estado: "error",
+      error:
+        "El SAT no aceptó la autenticación con la FIEL (no reconoció la firma o el certificado). Verifica que el .cer y .key subidos sean la e.firma (no un CSD) vigente de este RFC.",
+    };
+  }
+  return { estado: "ok", s };
+}
+
 export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Promise<ResultadoCsf> {
   const pasos: PasoDiag[] = [];
   try {
-    const fiel = emisor.fiel;
-    if (!fiel) return { ok: false, pasos, error: "Esta empresa no tiene FIEL (e.firma) cargada." };
-
     const jar: Jar = new Map();
     const entry = entradaValida(entrada) ?? CSF_ENTRY;
 
-    // 1) Entrar al lanzador y seguir hasta la página de e.firma (certform).
-    let s = await hop(jar, entry, { method: "GET" }, pasos, "Entrada");
-    s = await seguirAutoSubmit(jar, s, pasos, "SSO");
-    let html = texto(s);
+    const auth = await autenticarFielEnPortal(emisor, entry, jar, pasos);
+    if (auth.estado === "error") return { ok: false, pasos, error: auth.error };
+    if (auth.estado === "pdf") return { ok: true, pdf: auth.s.body, rfc: emisor.fiel?.rfc, pasos };
 
-    if (esPdf(s)) return { ok: true, pdf: s.body, rfc: fiel.rfc, pasos };
-    if (!/id="tokenuuid"/i.test(html)) {
-      return { ok: false, pasos, error: "No se llegó a la página de e.firma del SAT (el portal pudo cambiar). Revisa los pasos." };
-    }
-
-    // 2) Extraer el reto y los campos ocultos del certform.
-    const tokenuuid = attrDe(html.match(/id="tokenuuid"[^>]*>/i)?.[0] || "", "value") || "";
-    if (!tokenuuid) return { ok: false, pasos, error: "El SAT no entregó el reto (tokenuuid)." };
-    // El JS del SAT firma el value del input name="guid" (el mismo <input> que
-    // trae id="tokenuuid", con idéntico value). Se prefiere `guid` por fidelidad;
-    // se registra la comparación para detectar si el SAT los llegara a separar.
-    const guidVal = attrDe(html.match(/name="guid"[^>]*>/i)?.[0] || "", "value") || "";
-    const reto = guidVal || tokenuuid;
-    pasos.push({
-      paso: "Reto",
-      detalle: `tokenuuid=${tokenuuid.slice(0, 12)}… · guid=${(guidVal || "(sin campo)").slice(0, 12)}… · coinciden=${guidVal === tokenuuid}`,
-    });
-    // La página trae DOS <form>; hay que tomar el que contiene el campo `token`
-    // (id="certform"), no el primero (plantilla gob.mx).
-    const certform = parseFormConCampo(html, "token") || parseForm(html);
-    if (!certform) return { ok: false, pasos, error: "No se encontró el formulario de e.firma." };
-
-    // 3) Firmar el reto con la FIEL (desde la base de datos) y colocar el token.
-    //    El certform también manda en `fert` la fecha de expiración del cert
-    //    (getNotAfter), que el JS del SAT llena al cargar el .cer.
-    const { cer, key } = bytesCertificado(emisor, "fiel");
-    pasos.push({
-      paso: "FIEL",
-      detalle: `tipo ${fiel.tipo} · RFC ${fiel.rfc} · noCert ${fiel.noCertificado} · vence ${(fiel.validoHasta || "").slice(0, 10)} · vigente ${fiel.vigente}`,
-    });
-    certform.inputs.token = construirToken(fiel, reto, key);
-    certform.inputs.fert = getNotAfter(cer);
-
-    // 4) Enviar la autenticación (el certform postea a su propia URL). El NIDP
-    //    responde con una página que finaliza la sesión por window.location; no
-    //    hace falta seguirla: la cookie de sesión ya quedó fijada por este POST.
-    s = await enviarForm(jar, certform, s.url, pasos, "Autenticación");
-    s = await seguirAutoSubmit(jar, s, pasos, "Autenticación");
-
-    if (esPdf(s)) return { ok: true, pdf: s.body, rfc: fiel.rfc, pasos };
-
-    // Diagnóstico de la autenticación. El certform del SAT trae SIEMPRE los textos
-    // "revocada"/"no vigente" en su JS (mensajes predefinidos); el error REAL lo
-    // inyecta el servidor en `var error = '...'` (vacío = sin error). Si el
-    // certform reaparece, la firma no fue aceptada.
-    html = texto(s);
-    const certReaparece = /id="tokenuuid"/i.test(html);
-    const errorSat = (html.match(/var\s+error\s*=\s*'([^']*)'/i)?.[1] || "").trim();
-    const cuerpo = html.replace(/\s+/g, " ").trim().slice(0, 400);
-    const setCk = (s.headers["set-cookie"] as string[] | undefined)?.length || 0;
-    pasos.push({
-      paso: "Autenticación (resultado)",
-      status: s.status,
-      detalle: `${(s.headers["content-type"] as string) || ""} · ${s.body.length} bytes · certform=${certReaparece} · set-cookie=${setCk} · error="${errorSat || "(vacío)"}" · cuerpo="${cuerpo}"`,
-    });
-
-    if (errorSat) {
-      return { ok: false, pasos, error: `El SAT rechazó la e.firma: ${errorSat}.` };
-    }
-    if (certReaparece || s.status >= 400) {
-      return {
-        ok: false,
-        pasos,
-        error:
-          "El SAT no aceptó la autenticación con la FIEL (no reconoció la firma o el certificado). Verifica que el .cer y .key subidos sean la e.firma (no un CSD) vigente de este RFC.",
-      };
-    }
-
-    // 5) Autenticado: generar y descargar el PDF por el portal de trámites (rfcampc).
-    s = await generarConstanciaRfcampc(jar, pasos);
-    if (esPdf(s)) return { ok: true, pdf: s.body, rfc: fiel.rfc, pasos };
+    // Autenticado: generar y descargar el PDF por el portal de trámites (rfcampc).
+    const s = await generarConstanciaRfcampc(jar, pasos);
+    if (esPdf(s)) return { ok: true, pdf: s.body, rfc: emisor.fiel?.rfc, pasos };
 
     const htmlFinal = texto(s).replace(/\s+/g, " ").trim().slice(0, 400);
     pasos.push({
@@ -451,7 +485,7 @@ export async function descargarCsfConFiel(emisor: Emisor, entrada?: string): Pro
 
 /** Convierte errores crudos (red, TLS, descifrado) en mensajes accionables,
  *  pensados para diagnosticar diferencias entre local y producción. */
-function traducirErrorCsf(e: unknown): string {
+export function traducirErrorCsf(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (/unable to authenticate data|bad decrypt|unsupported state/i.test(msg)) {
     return (

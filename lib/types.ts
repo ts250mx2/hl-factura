@@ -61,6 +61,15 @@ export interface Emisor {
   // Solo en respuestas de la API (no se persiste en la tabla): indica que la
   // empresa ya tiene una Constancia de Situación Fiscal (PDF) guardada.
   tieneCsf?: boolean;
+  // Solo en respuestas de la API: última Opinión de Cumplimiento (32-D) descargada.
+  opinion32d?: OpinionCumplimiento | null;
+}
+
+/** Resultado de la Opinión del Cumplimiento de obligaciones fiscales (Art. 32-D CFF). */
+export interface OpinionCumplimiento {
+  sentido: "positiva" | "negativa" | "sin_obligaciones" | "desconocido";
+  fecha: string; // ISO de cuándo se descargó del SAT
+  folio?: string;
 }
 
 export interface Cliente {
@@ -471,6 +480,8 @@ export interface ConfigFiscal {
   coeficienteUtilidad: number; // solo PM general, ej. 0.0854
   deduccionCiegaArrendamiento?: boolean; // arrendamiento PF: usar deducción opcional 35%
   perfil?: PerfilFiscal;
+  // Última Opinión de Cumplimiento (32-D) descargada del SAT con la e.firma.
+  opinion32d?: OpinionCumplimiento;
 }
 
 export interface ReglonImpuesto {
