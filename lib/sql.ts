@@ -287,6 +287,15 @@ const DDL: string[] = [
     UNIQUE KEY uq_mov (empresaId, hash),
     KEY idx_empresa (empresaId, creadoEl)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS obligaciones_estado (
+    empresaId CHAR(36) NOT NULL,
+    clave VARCHAR(40) NOT NULL,
+    periodo CHAR(7) NOT NULL,
+    presentadoEl VARCHAR(32) NOT NULL,
+    nota VARCHAR(300) NULL,
+    PRIMARY KEY (empresaId, clave, periodo),
+    KEY idx_periodo (empresaId, periodo)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 // Cambios sobre tablas ya existentes: se aplican en cada arranque ignorando

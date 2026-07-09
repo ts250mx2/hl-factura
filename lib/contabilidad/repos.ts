@@ -189,3 +189,48 @@ export async function guardarConfigFiscal(empresaId: string, cfg: ConfigFiscal):
     [empresaId, JSON.stringify(cfg)],
   );
 }
+
+/* ---------- Calendario de obligaciones (marcas de "presentado") ---------- */
+
+/** Obligaciones marcadas como presentadas para varias empresas en un periodo
+ *  (AAAA-MM). Devuelve un mapa `${empresaId}|${clave}` → { presentadoEl, nota }. */
+export async function obligacionesPresentadas(
+  empresaIds: string[],
+  periodo: string,
+): Promise<Map<string, { presentadoEl: string; nota?: string }>> {
+  const mapa = new Map<string, { presentadoEl: string; nota?: string }>();
+  if (!empresaIds.length) return mapa;
+  const r = await rows(
+    "SELECT empresaId, clave, presentadoEl, nota FROM obligaciones_estado WHERE empresaId IN (?) AND periodo = ?",
+    [empresaIds, periodo],
+  );
+  for (const x of r) {
+    mapa.set(`${x.empresaId}|${x.clave}`, {
+      presentadoEl: String(x.presentadoEl),
+      nota: x.nota ? String(x.nota) : undefined,
+    });
+  }
+  return mapa;
+}
+
+export async function marcarObligacion(
+  empresaId: string,
+  clave: string,
+  periodo: string,
+  presentadoEl: string,
+  nota?: string,
+): Promise<void> {
+  await run(
+    `INSERT INTO obligaciones_estado (empresaId, clave, periodo, presentadoEl, nota) VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE presentadoEl = VALUES(presentadoEl), nota = VALUES(nota)`,
+    [empresaId, clave, periodo, presentadoEl, nota ?? null],
+  );
+}
+
+export async function desmarcarObligacion(empresaId: string, clave: string, periodo: string): Promise<void> {
+  await run("DELETE FROM obligaciones_estado WHERE empresaId = ? AND clave = ? AND periodo = ?", [
+    empresaId,
+    clave,
+    periodo,
+  ]);
+}
