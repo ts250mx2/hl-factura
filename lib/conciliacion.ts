@@ -174,6 +174,98 @@ export function parsearEstadoDeCuenta(contenido: string): ResultadoParser {
   };
 }
 
+/* ================= Parser de estados de cuenta en PDF ================= */
+
+const MESES_ABR: Record<string, string> = {
+  ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
+  jul: "07", ago: "08", sep: "09", set: "09", oct: "10", nov: "11", dic: "12",
+};
+
+// Depósitos entrantes típicos (pagos de clientes) en la banca mexicana. Se exige
+// una de estas palabras para contar una línea como depósito (evita meter saldos,
+// cargos o resúmenes por error): mejor omitir alguno que crear conciliaciones malas.
+const DEPOSITO_KW = /\b(abono|dep[oó]sito|dep\b|spei\s*recib|traspaso\s*recib|transferencia\s*recib|pago\s*recibido|bonificaci|devoluci|reembolso)/i;
+// Renglones de saldo/resumen que traen fecha e importe pero NO son movimientos.
+const RESUMEN_RE = /\bsaldo\b|\bbalance\b|\bsubtotal\b|dep[oó]sitos?\s+del\s+per|retiros?\s+del\s+per|total\s+de\s+(dep|ret|mov)/i;
+// Importe con 2 decimales (con o sin separador de miles y signo/$).
+const MONTO_RE = /-?\$?\s?\d{1,3}(?:[,\s]\d{3})*\.\d{2}\b/g;
+
+/** Extrae la primera fecha del renglón (numérica o con mes abreviado en español). */
+function extraerFecha(linea: string): { iso: string; raw: string } | null {
+  let m = linea.match(/\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})\b/);
+  if (m) {
+    const yyyy = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return { iso: `${yyyy}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`, raw: m[0] };
+  }
+  m = linea.match(/\b(\d{1,2})[/.\- ]([A-Za-zÁÉÍÓÚáéíóú]{3,4})[/.\- ](\d{2,4})\b/);
+  if (m) {
+    const mes = MESES_ABR[m[2].slice(0, 3).toLowerCase()];
+    if (mes) {
+      const yyyy = m[3].length === 2 ? `20${m[3]}` : m[3];
+      return { iso: `${yyyy}-${mes}-${m[1].padStart(2, "0")}`, raw: m[0] };
+    }
+  }
+  m = linea.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (m) return { iso: `${m[1]}-${m[2]}-${m[3]}`, raw: m[0] };
+  return null;
+}
+
+/**
+ * Lee el TEXTO extraído de un PDF de estado de cuenta y devuelve los depósitos.
+ * Es de mejor esfuerzo (los PDF varían por banco): toma los renglones con fecha
+ * e importe, se queda con los abonos/depósitos (por palabra clave) y descarta la
+ * columna de saldo. Para máxima precisión conviene el CSV/Excel del banco.
+ */
+export function parsearEstadoDeCuentaPdf(texto: string): ResultadoParser {
+  const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const depositos: MovimientoBanco[] = [];
+  let totalLineas = 0;
+  let ignorados = 0;
+
+  for (const linea of lineas) {
+    const fecha = extraerFecha(linea);
+    if (!fecha) continue; // no es un renglón de movimiento
+    if (RESUMEN_RE.test(linea)) continue; // saldo inicial/final, subtotales…
+    const montos = [...linea.matchAll(MONTO_RE)]
+      .map((x) => parseImporte(x[0]))
+      .filter((n): n is number => n !== null && n > 0);
+    if (montos.length === 0) continue;
+    totalLineas++;
+
+    // Solo se toman los depósitos identificados por palabra clave (abono/depósito/
+    // SPEI recibido…); lo demás (cargos, comisiones, ambiguos) se omite.
+    if (!DEPOSITO_KW.test(linea)) {
+      ignorados++;
+      continue;
+    }
+    // Si hay dos o más importes, el último suele ser el saldo → tomar el anterior.
+    const monto = montos.length >= 2 ? montos[montos.length - 2] : montos[0];
+    if (monto <= 0) {
+      ignorados++;
+      continue;
+    }
+    const referencia = linea
+      .replace(fecha.raw, " ")
+      .replace(MONTO_RE, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    depositos.push({ fecha: fecha.iso, referencia: referencia.slice(0, 290), monto: round2(monto) });
+  }
+
+  if (totalLineas === 0) {
+    throw new Error(
+      "No se reconocieron movimientos con fecha e importe en el PDF. Si tu banco permite exportar el estado de cuenta en CSV o Excel, úsalo para mayor precisión.",
+    );
+  }
+  return {
+    depositos,
+    totalLineas,
+    ignorados,
+    advertencia:
+      "Lectura de PDF (beta): revisa los depósitos detectados antes de conciliar. Por la variedad de formatos, algunos bancos requieren el CSV para máxima precisión.",
+  };
+}
+
 /* ================= Motor de emparejamiento ================= */
 
 export interface Candidato {

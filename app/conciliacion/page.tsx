@@ -139,7 +139,7 @@ export default function ConciliacionPage() {
     <div>
       <PageHeader
         title="Conciliación bancaria"
-        subtitle="Sube tu estado de cuenta (CSV): detecto los depósitos, los emparejo con tu cartera PPD y genero los complementos de pago al confirmar."
+        subtitle="Sube tu estado de cuenta (CSV, TXT o PDF): detecto los depósitos, los emparejo con tu cartera PPD y genero los complementos de pago al confirmar."
         actions={
           exactasPendientes > 0 ? (
             <Button onClick={aplicarExactas} loading={Boolean(aplicando)}>
@@ -164,15 +164,16 @@ export default function ConciliacionPage() {
         <motion.div animate={arrastrando ? { scale: 1.12 } : { scale: 1 }} className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-100 to-violet-100 text-brand-600">
           <UploadCloud className="size-6" />
         </motion.div>
-        <p className="text-sm font-bold">Arrastra el estado de cuenta (CSV / TXT)</p>
+        <p className="text-sm font-bold">Arrastra el estado de cuenta (CSV / TXT / PDF)</p>
         <p className="text-xs text-ink-400">
           Acepta exportaciones de cualquier banco: detecto delimitador, columnas de fecha/abono/concepto y formatos de fecha automáticamente.
+          El PDF es lectura de mejor esfuerzo (beta): si tu banco permite CSV o Excel, dan mayor precisión.
         </p>
         <label className="cursor-pointer">
           <span className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:border-brand-300">
             Elegir archivo…
           </span>
-          <input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) analizar(f); }} />
+          <input type="file" accept=".csv,.txt,.pdf,text/csv,text/plain,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) analizar(f); }} />
         </label>
       </div>
 
