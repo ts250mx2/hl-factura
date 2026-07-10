@@ -27,6 +27,7 @@ import {
   UsersRound,
   ArrowLeftRight,
   TrendingUp,
+  Gauge,
 } from "lucide-react";
 import { useSesion } from "./session-provider";
 import type { Rol } from "@/lib/types";
@@ -40,6 +41,7 @@ interface Item {
 
 const NAV: Item[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/despacho", label: "Torre de control", icon: Gauge, roles: ["admin", "supervisor", "auxiliar"] },
   { href: "/facturas", label: "Facturas", icon: FileText },
   { href: "/pagos", label: "Pagos (REP)", icon: HandCoins },
   { href: "/cxc", label: "Por cobrar", icon: Wallet },

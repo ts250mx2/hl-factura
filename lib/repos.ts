@@ -330,7 +330,7 @@ export async function eliminarProducto(id: string): Promise<void> {
 
 export async function listarFacturas(
   empresaIds: string[],
-  filtros?: { estado?: string; q?: string },
+  filtros?: { estado?: string; q?: string; limite?: number },
 ): Promise<Factura[]> {
   if (empresaIds.length === 0) return [];
   let sql = "SELECT datosJson FROM facturas WHERE empresaId IN (?)";
@@ -339,7 +339,11 @@ export async function listarFacturas(
     sql += " AND estado = ?";
     params.push(filtros.estado);
   }
-  sql += " ORDER BY creadoEl DESC LIMIT 500";
+  // Límite configurable: la vista de una empresa usa 500; agregados de varias
+  // empresas (p. ej. el tablero del despacho) suben el tope para no truncar.
+  const limite = Math.min(Math.max(filtros?.limite ?? 500, 1), 20_000);
+  sql += " ORDER BY creadoEl DESC LIMIT ?";
+  params.push(limite);
   const r = await rows(sql, params);
   let facturas = r.map((x) => JSON.parse(String(x.datosJson)) as Factura);
   // Orden de presentación: fecha de emisión (la fecha vive en el JSON, no en
@@ -624,6 +628,18 @@ export async function contarAlertasNoLeidas(despachoId: string, empresaIds: stri
     [despachoId, empresaIds.length ? empresaIds : [""]],
   );
   return Number(r[0].n);
+}
+
+/** Alertas sin leer agrupadas por empresa (para el tablero del despacho). */
+export async function alertasNoLeidasPorEmpresa(despachoId: string, empresaIds: string[]): Promise<Map<string, number>> {
+  const m = new Map<string, number>();
+  if (!empresaIds.length) return m;
+  const r = await rows(
+    "SELECT empresaId, COUNT(*) AS n FROM alertas WHERE despachoId = ? AND leida = 0 AND empresaId IN (?) GROUP BY empresaId",
+    [despachoId, empresaIds],
+  );
+  for (const x of r) if (x.empresaId) m.set(String(x.empresaId), Number(x.n));
+  return m;
 }
 
 export async function marcarAlertasLeidas(despachoId: string, ids: string[] | "todas"): Promise<void> {

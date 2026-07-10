@@ -42,8 +42,11 @@ function clasificar(diasParaVencer: number): BucketCxc {
   return "vencida_mas";
 }
 
-export async function obtenerCartera(empresaIds: string[]): Promise<{ items: ItemCartera[]; resumen: ResumenCartera }> {
-  const facturas = (await listarFacturas(empresaIds, { estado: "timbrada" })).filter(
+export async function obtenerCartera(
+  empresaIds: string[],
+  opts?: { limite?: number },
+): Promise<{ items: ItemCartera[]; resumen: ResumenCartera }> {
+  const facturas = (await listarFacturas(empresaIds, { estado: "timbrada", limite: opts?.limite })).filter(
     (f) => f.metodoPago === "PPD",
   );
   const saldos = await saldosDeFacturas(facturas.map((f) => f.id));
