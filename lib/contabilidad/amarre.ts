@@ -28,22 +28,20 @@ export interface DocGastoSinPoliza {
 export interface Amarre {
   periodo: string;
   ingresos: {
-    cfdi: { count: number; subtotal: number; iva: number; total: number };
-    contabilizadoTotal: number;
+    cfdi: { count: number; subtotal: number; iva: number; total: number }; // neto (notas de crédito restadas)
     conPoliza: number;
     sinPoliza: DocIngresoSinPoliza[];
-    diferencia: number; // CFDI total − contabilizado
+    sinContabilizar: number; // suma del total de las facturas sin póliza
   };
   gastos: {
     cfdi: { count: number; total: number };
-    contabilizadoTotal: number;
     conPoliza: number;
     sinPoliza: DocGastoSinPoliza[];
+    sinContabilizar: number;
     noDeducibles: { count: number; total: number };
-    diferencia: number;
   };
   iva: {
-    trasladadoDevengado: number; // IVA de los CFDI emitidos (devengado)
+    trasladadoDevengado: number; // IVA de los CFDI emitidos (devengado, neto de NC)
     trasladadoCobrado: number; // IVA efectivamente cobrado (flujo)
     acreditablePagado: number; // IVA acreditable pagado (flujo)
     aCargo: number; // resultado del IVA del periodo (panel)
@@ -52,6 +50,8 @@ export interface Amarre {
 }
 
 const suma = <T>(arr: T[], f: (x: T) => number) => round2(arr.reduce((s, x) => s + f(x), 0));
+// Nota de crédito (tipo E): reduce el ingreso, así que su aporte va en negativo.
+const signoIngreso = (tipo: string) => (tipo === "E" ? -1 : 1);
 
 export async function calcularAmarre(empresa: Emisor, anio: string, mes: string): Promise<Amarre> {
   const periodo = `${anio}-${mes}`;
@@ -69,22 +69,22 @@ export async function calcularAmarre(empresa: Emisor, anio: string, mes: string)
     (c) => (c.fecha || "").startsWith(periodo) && c.estatusSat === "vigente" && (c.tipoComprobante ?? "I") === "I",
   );
 
-  // Emparejamiento por documento de origen de las pólizas del periodo.
+  // Emparejamiento por documento de origen de las pólizas del periodo. Se usa el
+  // MATCH documental (¿cada CFDI tiene su póliza?), no una resta contra
+  // póliza.total: ese total es la suma del debe (bruto, con retenciones), que no
+  // coincide con el total neto del CFDI y generaba diferencias falsas.
   const conPolizaFactura = new Set(polizas.filter((p) => p.origenTipo === "factura").map((p) => p.origenId));
   const conPolizaGasto = new Set(polizas.filter((p) => p.origenTipo === "gasto").map((p) => p.origenId));
-  const contabIngresos = suma(polizas.filter((p) => p.origenTipo === "factura"), (p) => p.total);
-  const contabGastos = suma(polizas.filter((p) => p.origenTipo === "gasto"), (p) => p.total);
 
-  /* ---- Ingresos ---- */
+  /* ---- Ingresos (neto: las notas de crédito restan) ---- */
   const ingSinPoliza = emitidas.filter((f) => !conPolizaFactura.has(f.id));
   const ingresos = {
     cfdi: {
       count: emitidas.length,
-      subtotal: suma(emitidas, (f) => f.subTotal - f.descuento),
-      iva: suma(emitidas, (f) => f.totalTraslados),
-      total: suma(emitidas, (f) => f.total),
+      subtotal: suma(emitidas, (f) => signoIngreso(f.tipoDeComprobante) * (f.subTotal - f.descuento)),
+      iva: suma(emitidas, (f) => signoIngreso(f.tipoDeComprobante) * f.totalTraslados),
+      total: suma(emitidas, (f) => signoIngreso(f.tipoDeComprobante) * f.total),
     },
-    contabilizadoTotal: contabIngresos,
     conPoliza: emitidas.length - ingSinPoliza.length,
     sinPoliza: ingSinPoliza.map((f) => ({
       id: f.id,
@@ -93,7 +93,7 @@ export async function calcularAmarre(empresa: Emisor, anio: string, mes: string)
       fecha: (f.fecha || "").slice(0, 10),
       total: f.total,
     })),
-    diferencia: round2(suma(emitidas, (f) => f.total) - contabIngresos),
+    sinContabilizar: suma(ingSinPoliza, (f) => f.total),
   };
 
   /* ---- Gastos ---- */
@@ -101,7 +101,6 @@ export async function calcularAmarre(empresa: Emisor, anio: string, mes: string)
   const noDed = recPeriodo.filter((c) => c.deducible !== "ok");
   const gastos = {
     cfdi: { count: recPeriodo.length, total: suma(recPeriodo, (c) => c.total) },
-    contabilizadoTotal: contabGastos,
     conPoliza: recPeriodo.length - gasSinPoliza.length,
     sinPoliza: gasSinPoliza.map((c) => ({
       uuid: c.uuid,
@@ -110,8 +109,8 @@ export async function calcularAmarre(empresa: Emisor, anio: string, mes: string)
       total: c.total,
       deducible: c.deducible,
     })),
+    sinContabilizar: suma(gasSinPoliza, (c) => c.total),
     noDeducibles: { count: noDed.length, total: suma(noDed, (c) => c.total) },
-    diferencia: round2(suma(recPeriodo, (c) => c.total) - contabGastos),
   };
 
   /* ---- IVA (flujo, del panel fiscal) ---- */
@@ -129,18 +128,14 @@ export async function calcularAmarre(empresa: Emisor, anio: string, mes: string)
   /* ---- Hallazgos (resumen legible) ---- */
   const hallazgos: string[] = [];
   if (ingresos.sinPoliza.length)
-    hallazgos.push(`${ingresos.sinPoliza.length} factura(s) timbrada(s) sin contabilizar por ${money(suma(ingSinPoliza, (f) => f.total))}. Genera las pólizas del periodo.`);
+    hallazgos.push(`${ingresos.sinPoliza.length} factura(s) timbrada(s) sin contabilizar por ${money(ingresos.sinContabilizar)}. Genera las pólizas del periodo.`);
   if (gastos.sinPoliza.length)
-    hallazgos.push(`${gastos.sinPoliza.length} CFDI recibido(s) sin póliza por ${money(suma(gasSinPoliza, (c) => c.total))}.`);
+    hallazgos.push(`${gastos.sinPoliza.length} CFDI recibido(s) sin póliza por ${money(gastos.sinContabilizar)}.`);
   if (gastos.noDeducibles.count)
     hallazgos.push(`${gastos.noDeducibles.count} gasto(s) NO deducible(s)/EFOS por ${money(gastos.noDeducibles.total)} colados en el periodo — revísalos antes de deducir.`);
-  if (Math.abs(ingresos.diferencia) > 0.5)
-    hallazgos.push(`Diferencia de ${money(ingresos.diferencia)} entre ingresos timbrados y contabilizados.`);
-  if (Math.abs(gastos.diferencia) > 0.5)
-    hallazgos.push(`Diferencia de ${money(gastos.diferencia)} entre gastos recibidos y contabilizados.`);
   if (iva && Math.abs(iva.trasladadoDevengado - iva.trasladadoCobrado) > 0.5)
-    hallazgos.push(`IVA trasladado devengado (${money(iva.trasladadoDevengado)}) vs cobrado (${money(iva.trasladadoCobrado)}): la diferencia corresponde a facturas PPD aún no cobradas.`);
-  if (!hallazgos.length) hallazgos.push("Sin discrepancias: lo timbrado cuadra con lo contabilizado.");
+    hallazgos.push(`IVA trasladado devengado (${money(iva.trasladadoDevengado)}) vs cobrado (${money(iva.trasladadoCobrado)}): la diferencia son facturas por cobrar (PPD) cuyo IVA aún no se causa en flujo.`);
+  if (!hallazgos.length) hallazgos.push("Sin discrepancias: todos los CFDI del periodo están contabilizados.");
 
   return { periodo, ingresos, gastos, iva, hallazgos };
 }

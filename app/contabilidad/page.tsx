@@ -99,18 +99,16 @@ interface Amarre {
   periodo: string;
   ingresos: {
     cfdi: { count: number; subtotal: number; iva: number; total: number };
-    contabilizadoTotal: number;
     conPoliza: number;
     sinPoliza: { id: string; folio: string; receptor: string; fecha: string; total: number }[];
-    diferencia: number;
+    sinContabilizar: number;
   };
   gastos: {
     cfdi: { count: number; total: number };
-    contabilizadoTotal: number;
     conPoliza: number;
     sinPoliza: { uuid: string; emisor: string; fecha: string; total: number; deducible: string }[];
+    sinContabilizar: number;
     noDeducibles: { count: number; total: number };
-    diferencia: number;
   };
   iva: { trasladadoDevengado: number; trasladadoCobrado: number; acreditablePagado: number; aCargo: number } | null;
   hallazgos: string[];
@@ -481,6 +479,9 @@ export default function ContabilidadPage() {
         subtitle="Pólizas automáticas, balanza, estados financieros y un panel de impuestos que se arma con el régimen y las obligaciones de la Constancia de Situación Fiscal."
         actions={
           <div className="flex items-center gap-2">
+            <a href={`/contabilidad/paquete/imprimir?${periodo}`} target="_blank" rel="noopener noreferrer" title="Reporte mensual del cliente para imprimir o guardar en PDF">
+              <Button variant="secondary" className="px-3 py-2 text-xs"><ClipboardList className="size-3.5" /> Paquete mensual</Button>
+            </a>
             <Select value={mes} onChange={(e) => setMes(e.target.value)} className="w-36 py-2 text-xs">
               {MESES.map((m, i) => (
                 <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>
@@ -685,18 +686,14 @@ export default function ContabilidadPage() {
                         <Fila label={`CFDI emitidos (${amarre.ingresos.cfdi.count})`} valor={mxn.format(amarre.ingresos.cfdi.total)} />
                         <Fila label="— Subtotal" valor={mxn.format(amarre.ingresos.cfdi.subtotal)} sub />
                         <Fila label="— IVA trasladado" valor={mxn.format(amarre.ingresos.cfdi.iva)} sub />
-                        <Fila label="Contabilizado (pólizas)" valor={mxn.format(amarre.ingresos.contabilizadoTotal)} />
-                        <FilaDif dif={amarre.ingresos.diferencia} />
-                        <Fila label="Con póliza / sin póliza" valor={`${amarre.ingresos.conPoliza} / ${amarre.ingresos.sinPoliza.length}`} />
+                        <FilaMatch conPoliza={amarre.ingresos.conPoliza} sinPoliza={amarre.ingresos.sinPoliza.length} sinContab={amarre.ingresos.sinContabilizar} />
                       </dl>
                     </div>
                     <div className="card p-4">
                       <p className="mb-3 text-sm font-bold">Gastos</p>
                       <dl className="space-y-1.5 text-xs">
                         <Fila label={`CFDI recibidos vigentes (${amarre.gastos.cfdi.count})`} valor={mxn.format(amarre.gastos.cfdi.total)} />
-                        <Fila label="Contabilizado (pólizas)" valor={mxn.format(amarre.gastos.contabilizadoTotal)} />
-                        <FilaDif dif={amarre.gastos.diferencia} />
-                        <Fila label="Con póliza / sin póliza" valor={`${amarre.gastos.conPoliza} / ${amarre.gastos.sinPoliza.length}`} />
+                        <FilaMatch conPoliza={amarre.gastos.conPoliza} sinPoliza={amarre.gastos.sinPoliza.length} sinContab={amarre.gastos.sinContabilizar} />
                         {amarre.gastos.noDeducibles.count > 0 && (
                           <Fila label={`No deducibles / EFOS (${amarre.gastos.noDeducibles.count})`} valor={mxn.format(amarre.gastos.noDeducibles.total)} alerta />
                         )}
@@ -1573,15 +1570,21 @@ function Fila({ label, valor, sub, alerta }: { label: string; valor: string; sub
   );
 }
 
-function FilaDif({ dif }: { dif: number }) {
-  const cuadra = Math.abs(dif) < 0.5;
+function FilaMatch({ conPoliza, sinPoliza, sinContab }: { conPoliza: number; sinPoliza: number; sinContab: number }) {
+  const cuadra = sinPoliza === 0;
   return (
-    <div className="flex justify-between border-t border-slate-100 pt-1.5">
-      <dt className="font-bold">Diferencia</dt>
-      <dd className={`tnum font-extrabold ${cuadra ? "text-emerald-700" : "text-rose-600"}`}>
-        {cuadra ? "Cuadra ✓" : mxn.format(dif)}
-      </dd>
-    </div>
+    <>
+      <div className="flex justify-between border-t border-slate-100 pt-1.5">
+        <dt className="text-ink-600">Contabilizados / sin contabilizar</dt>
+        <dd className="tnum font-semibold text-ink-900">{conPoliza} / {sinPoliza}</dd>
+      </div>
+      <div className="flex justify-between">
+        <dt className="font-bold">Monto sin contabilizar</dt>
+        <dd className={`tnum font-extrabold ${cuadra ? "text-emerald-700" : "text-rose-600"}`}>
+          {cuadra ? "Todo contabilizado ✓" : mxn.format(sinContab)}
+        </dd>
+      </div>
+    </>
   );
 }
 
