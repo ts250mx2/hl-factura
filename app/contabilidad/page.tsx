@@ -22,6 +22,8 @@ import {
   ClipboardList,
   FileSpreadsheet,
   CalendarCheck2,
+  Link2,
+  AlertTriangle,
 } from "lucide-react";
 import { api, postJson, putJson, ApiError, mxn } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner } from "@/components/ui";
@@ -47,6 +49,7 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 const TABS = [
   { clave: "polizas", label: "Pólizas", icon: BookOpenCheck },
   { clave: "balanza", label: "Balanza", icon: Scale },
+  { clave: "amarre", label: "Amarre", icon: Link2 },
   { clave: "estados", label: "Estados financieros", icon: FileBarChart2 },
   { clave: "impuestos", label: "Impuestos", icon: Percent },
   { clave: "diot", label: "DIOT", icon: FileSpreadsheet },
@@ -90,6 +93,27 @@ interface OrigenPoliza {
   id: string;
   href?: string;
   label: string;
+}
+
+interface Amarre {
+  periodo: string;
+  ingresos: {
+    cfdi: { count: number; subtotal: number; iva: number; total: number };
+    contabilizadoTotal: number;
+    conPoliza: number;
+    sinPoliza: { id: string; folio: string; receptor: string; fecha: string; total: number }[];
+    diferencia: number;
+  };
+  gastos: {
+    cfdi: { count: number; total: number };
+    contabilizadoTotal: number;
+    conPoliza: number;
+    sinPoliza: { uuid: string; emisor: string; fecha: string; total: number; deducible: string }[];
+    noDeducibles: { count: number; total: number };
+    diferencia: number;
+  };
+  iva: { trasladadoDevengado: number; trasladadoCobrado: number; acreditablePagado: number; aCargo: number } | null;
+  hallazgos: string[];
 }
 
 interface LineaEstado {
@@ -221,6 +245,8 @@ export default function ContabilidadPage() {
   const [formRegla, setFormRegla] = useState({ criterio: "rfc", valor: "", cuentaCodigo: "", nota: "" });
   const [guardando, setGuardando] = useState(false);
 
+  const [amarre, setAmarre] = useState<Amarre | null>(null);
+
   // Drill-down: auxiliar de una cuenta y detalle de una póliza.
   const [auxiliar, setAuxiliar] = useState<Auxiliar | null>(null);
   const [cargandoAux, setCargandoAux] = useState(false);
@@ -305,6 +331,14 @@ export default function ContabilidadPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, anio]);
+
+  useEffect(() => {
+    if (tab !== "amarre") return;
+    setAmarre(null);
+    api<Amarre>(`/api/contabilidad/amarre?${periodo}`)
+      .then(setAmarre)
+      .catch((e) => toast("error", "Cédula de amarre", e instanceof ApiError ? e.message : String(e)));
+  }, [tab, periodo, toast]);
 
   const actualizarAjuste = (campo: keyof typeof ajustes, valor: string) => {
     const nuevo = { ...ajustes, [campo]: Number(valor) || 0 };
@@ -620,6 +654,115 @@ export default function ContabilidadPage() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ---------- CÉDULA DE AMARRE ---------- */}
+            {tab === "amarre" && (
+              !amarre ? (
+                <Spinner label="Amarrando timbrado, contabilizado y fiscal…" />
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold">Cédula de amarre · {MESES[Number(mes) - 1]} {anio}</h2>
+                    <span className="hidden text-[11px] text-ink-400 sm:inline">timbrado ↔ contabilizado ↔ fiscal</span>
+                  </div>
+
+                  {/* Hallazgos */}
+                  <div className={`rounded-xl border p-4 text-xs leading-relaxed ${amarre.hallazgos.length === 1 && amarre.hallazgos[0].startsWith("Sin discrepancias") ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                    <p className="mb-1 flex items-center gap-1.5 font-bold">
+                      <AlertTriangle className="size-3.5" /> Hallazgos del amarre
+                    </p>
+                    <ul className="list-disc space-y-0.5 pl-5">
+                      {amarre.hallazgos.map((h, i) => <li key={i}>{h}</li>)}
+                    </ul>
+                  </div>
+
+                  {/* Ingresos y gastos */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="card p-4">
+                      <p className="mb-3 text-sm font-bold">Ingresos</p>
+                      <dl className="space-y-1.5 text-xs">
+                        <Fila label={`CFDI emitidos (${amarre.ingresos.cfdi.count})`} valor={mxn.format(amarre.ingresos.cfdi.total)} />
+                        <Fila label="— Subtotal" valor={mxn.format(amarre.ingresos.cfdi.subtotal)} sub />
+                        <Fila label="— IVA trasladado" valor={mxn.format(amarre.ingresos.cfdi.iva)} sub />
+                        <Fila label="Contabilizado (pólizas)" valor={mxn.format(amarre.ingresos.contabilizadoTotal)} />
+                        <FilaDif dif={amarre.ingresos.diferencia} />
+                        <Fila label="Con póliza / sin póliza" valor={`${amarre.ingresos.conPoliza} / ${amarre.ingresos.sinPoliza.length}`} />
+                      </dl>
+                    </div>
+                    <div className="card p-4">
+                      <p className="mb-3 text-sm font-bold">Gastos</p>
+                      <dl className="space-y-1.5 text-xs">
+                        <Fila label={`CFDI recibidos vigentes (${amarre.gastos.cfdi.count})`} valor={mxn.format(amarre.gastos.cfdi.total)} />
+                        <Fila label="Contabilizado (pólizas)" valor={mxn.format(amarre.gastos.contabilizadoTotal)} />
+                        <FilaDif dif={amarre.gastos.diferencia} />
+                        <Fila label="Con póliza / sin póliza" valor={`${amarre.gastos.conPoliza} / ${amarre.gastos.sinPoliza.length}`} />
+                        {amarre.gastos.noDeducibles.count > 0 && (
+                          <Fila label={`No deducibles / EFOS (${amarre.gastos.noDeducibles.count})`} valor={mxn.format(amarre.gastos.noDeducibles.total)} alerta />
+                        )}
+                      </dl>
+                    </div>
+                  </div>
+
+                  {/* IVA de flujo */}
+                  {amarre.iva && (
+                    <div className="card p-4">
+                      <p className="mb-3 text-sm font-bold">IVA del periodo (flujo)</p>
+                      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                        <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-ink-400">Trasladado devengado</p><p className="tnum font-bold">{mxn.format(amarre.iva.trasladadoDevengado)}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-ink-400">Trasladado cobrado</p><p className="tnum font-bold">{mxn.format(amarre.iva.trasladadoCobrado)}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-ink-400">Acreditable pagado</p><p className="tnum font-bold">{mxn.format(amarre.iva.acreditablePagado)}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-2.5"><p className="text-ink-400">IVA a cargo</p><p className={`tnum font-bold ${amarre.iva.aCargo > 0 ? "text-rose-600" : "text-emerald-700"}`}>{mxn.format(amarre.iva.aCargo)}</p></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Facturas timbradas sin contabilizar */}
+                  {amarre.ingresos.sinPoliza.length > 0 && (
+                    <div className="card p-4">
+                      <p className="mb-2 text-sm font-bold text-rose-700">Facturas timbradas sin contabilizar ({amarre.ingresos.sinPoliza.length})</p>
+                      <div className="max-h-56 overflow-auto">
+                        <table className="w-full text-xs">
+                          <thead><tr className="border-b border-slate-200 text-left text-[10px] uppercase text-ink-400"><th className="p-1.5">Folio</th><th className="p-1.5">Receptor</th><th className="p-1.5">Fecha</th><th className="p-1.5 text-right">Total</th></tr></thead>
+                          <tbody>
+                            {amarre.ingresos.sinPoliza.map((f) => (
+                              <tr key={f.id} className="border-b border-slate-50">
+                                <td className="mono p-1.5">{f.folio}</td>
+                                <td className="p-1.5">{f.receptor}</td>
+                                <td className="p-1.5">{f.fecha}</td>
+                                <td className="tnum p-1.5 text-right">{mxn.format(f.total)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="mt-2 text-[11px] text-ink-400">Genera las pólizas del periodo (pestaña Pólizas) para contabilizarlas.</p>
+                    </div>
+                  )}
+
+                  {/* CFDI recibidos sin póliza */}
+                  {amarre.gastos.sinPoliza.length > 0 && (
+                    <div className="card p-4">
+                      <p className="mb-2 text-sm font-bold text-amber-700">CFDI recibidos sin póliza ({amarre.gastos.sinPoliza.length})</p>
+                      <div className="max-h-56 overflow-auto">
+                        <table className="w-full text-xs">
+                          <thead><tr className="border-b border-slate-200 text-left text-[10px] uppercase text-ink-400"><th className="p-1.5">Emisor</th><th className="p-1.5">UUID</th><th className="p-1.5">Fecha</th><th className="p-1.5 text-right">Total</th></tr></thead>
+                          <tbody>
+                            {amarre.gastos.sinPoliza.map((c) => (
+                              <tr key={c.uuid} className="border-b border-slate-50">
+                                <td className="p-1.5">{c.emisor}</td>
+                                <td className="mono p-1.5 text-[10px]">{c.uuid.slice(0, 8)}…</td>
+                                <td className="p-1.5">{c.fecha}</td>
+                                <td className="tnum p-1.5 text-right">{mxn.format(c.total)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
             )}
 
             {/* ---------- ESTADOS FINANCIEROS ---------- */}
@@ -1419,7 +1562,28 @@ export default function ContabilidadPage() {
   );
 }
 
-/* ---------- Subcomponentes de estados financieros ---------- */
+/* ---------- Subcomponentes ---------- */
+
+function Fila({ label, valor, sub, alerta }: { label: string; valor: string; sub?: boolean; alerta?: boolean }) {
+  return (
+    <div className={`flex justify-between ${sub ? "pl-3 text-ink-400" : ""}`}>
+      <dt className={alerta ? "font-semibold text-rose-600" : "text-ink-600"}>{label}</dt>
+      <dd className={`tnum font-semibold ${alerta ? "text-rose-600" : "text-ink-900"}`}>{valor}</dd>
+    </div>
+  );
+}
+
+function FilaDif({ dif }: { dif: number }) {
+  const cuadra = Math.abs(dif) < 0.5;
+  return (
+    <div className="flex justify-between border-t border-slate-100 pt-1.5">
+      <dt className="font-bold">Diferencia</dt>
+      <dd className={`tnum font-extrabold ${cuadra ? "text-emerald-700" : "text-rose-600"}`}>
+        {cuadra ? "Cuadra ✓" : mxn.format(dif)}
+      </dd>
+    </div>
+  );
+}
 
 function GrupoRows({ grupo, soloLineas }: { grupo: GrupoEstado; soloLineas?: boolean }) {
   if (grupo.lineas.length === 0) return null;
