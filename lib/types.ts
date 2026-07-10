@@ -482,6 +482,8 @@ export interface ConfigFiscal {
   perfil?: PerfilFiscal;
   // Última Opinión de Cumplimiento (32-D) descargada del SAT con la e.firma.
   opinion32d?: OpinionCumplimiento;
+  // Correo del cliente para enviarle su reporte/paquete mensual.
+  emailContacto?: string;
 }
 
 export interface ReglonImpuesto {

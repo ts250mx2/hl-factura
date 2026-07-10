@@ -24,6 +24,7 @@ import {
   CalendarCheck2,
   Link2,
   AlertTriangle,
+  Mail,
 } from "lucide-react";
 import { api, postJson, putJson, ApiError, mxn } from "@/lib/client";
 import { Badge, Button, Field, Input, Modal, PageHeader, EmptyState, Select, Spinner } from "@/components/ui";
@@ -244,6 +245,9 @@ export default function ContabilidadPage() {
   const [guardando, setGuardando] = useState(false);
 
   const [amarre, setAmarre] = useState<Amarre | null>(null);
+  const [modalPaquete, setModalPaquete] = useState(false);
+  const [emailPaquete, setEmailPaquete] = useState("");
+  const [enviandoPaquete, setEnviandoPaquete] = useState(false);
 
   // Drill-down: auxiliar de una cuenta y detalle de una póliza.
   const [auxiliar, setAuxiliar] = useState<Auxiliar | null>(null);
@@ -277,6 +281,24 @@ export default function ContabilidadPage() {
       setPolizaDet(await api<{ poliza: Poliza; origen: OrigenPoliza }>(`/api/contabilidad/poliza?id=${id}`));
     } catch (e) {
       toast("error", "No se pudo abrir la póliza", e instanceof ApiError ? e.message : String(e));
+    }
+  };
+
+  const enviarPaqueteCliente = async () => {
+    const para = emailPaquete.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(para)) {
+      toast("error", "Correo inválido", "Escribe un correo válido del cliente.");
+      return;
+    }
+    setEnviandoPaquete(true);
+    try {
+      await postJson("/api/contabilidad/paquete/enviar", { anio, mes, para });
+      toast("success", "Reporte enviado", `Se envió el reporte de ${MESES[Number(mes) - 1]} a ${para}.`);
+      setModalPaquete(false);
+    } catch (e) {
+      toast("error", "No se pudo enviar", e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setEnviandoPaquete(false);
     }
   };
 
@@ -479,9 +501,9 @@ export default function ContabilidadPage() {
         subtitle="Pólizas automáticas, balanza, estados financieros y un panel de impuestos que se arma con el régimen y las obligaciones de la Constancia de Situación Fiscal."
         actions={
           <div className="flex items-center gap-2">
-            <a href={`/contabilidad/paquete/imprimir?${periodo}`} target="_blank" rel="noopener noreferrer" title="Reporte mensual del cliente para imprimir o guardar en PDF">
-              <Button variant="secondary" className="px-3 py-2 text-xs"><ClipboardList className="size-3.5" /> Paquete mensual</Button>
-            </a>
+            <Button variant="secondary" className="px-3 py-2 text-xs" onClick={() => { setEmailPaquete(fiscal?.config.emailContacto ?? ""); setModalPaquete(true); }} title="Reporte mensual del cliente: imprimir, descargar PDF o enviar por correo">
+              <ClipboardList className="size-3.5" /> Paquete mensual
+            </Button>
             <Select value={mes} onChange={(e) => setMes(e.target.value)} className="w-36 py-2 text-xs">
               {MESES.map((m, i) => (
                 <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>
@@ -1344,6 +1366,41 @@ export default function ContabilidadPage() {
           </motion.div>
         </AnimatePresence>
       )}
+
+      {/* Modal paquete mensual */}
+      <Modal
+        open={modalPaquete}
+        onClose={() => setModalPaquete(false)}
+        title={`Paquete mensual · ${MESES[Number(mes) - 1]} ${anio}`}
+        subtitle="Reporte del cliente: resultados, impuestos y revisión de consistencia."
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            <a href={`/contabilidad/paquete/imprimir?${periodo}`} target="_blank" rel="noopener noreferrer">
+              <Button variant="secondary" className="w-full text-xs"><Printer className="size-4" /> Ver / imprimir</Button>
+            </a>
+            <a href={`/api/contabilidad/paquete/pdf?${periodo}`}>
+              <Button variant="secondary" className="w-full text-xs"><FileDown className="size-4" /> Descargar PDF</Button>
+            </a>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="mb-2 text-xs font-bold">Enviar al cliente</p>
+            <Field label="Correo del cliente">
+              <Input
+                type="email"
+                value={emailPaquete}
+                onChange={(e) => setEmailPaquete(e.target.value)}
+                placeholder="cliente@correo.com"
+                onKeyDown={(e) => e.key === "Enter" && enviarPaqueteCliente()}
+              />
+            </Field>
+            <Button onClick={enviarPaqueteCliente} loading={enviandoPaquete} disabled={!emailPaquete.trim()} className="mt-3 w-full">
+              <Mail className="size-4" /> Enviar reporte por correo
+            </Button>
+            <p className="mt-2 text-[11px] text-ink-400">Se adjunta el PDF. Requiere el SMTP configurado en Configuración. El correo se recuerda para la próxima.</p>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal cuenta */}
       <Modal open={modalCuenta} onClose={() => setModalCuenta(false)} title={formCuenta.codigo ? `Cuenta ${formCuenta.codigo}` : "Nueva cuenta"}>

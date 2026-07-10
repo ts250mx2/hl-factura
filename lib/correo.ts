@@ -76,3 +76,54 @@ export async function enviarRecordatorio(cfg: ConfigSmtp, datos: DatosRecordator
     html,
   });
 }
+
+const MESES_CORREO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+export interface DatosPaquete {
+  para: string;
+  empresa: Emisor;
+  despachoNombre?: string;
+  anio: string;
+  mes: string;
+  pdf: Uint8Array;
+  totalImpuestos?: number | null;
+}
+
+/** Envía el reporte mensual del cliente con el PDF adjunto. */
+export async function enviarPaquete(cfg: ConfigSmtp, datos: DatosPaquete): Promise<void> {
+  if (!smtpConfigurado(cfg)) {
+    throw new Error("Configura el servidor de correo (SMTP) en Configuración antes de enviar el paquete.");
+  }
+  const { empresa, anio, mes } = datos;
+  const mesNombre = MESES_CORREO[Number(mes) - 1] ?? mes;
+  const html = `
+  <div style="font-family:Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1e293b">
+    <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:12px 12px 0 0;padding:24px;color:#fff">
+      <h2 style="margin:0;font-size:18px">${empresa.nombre}</h2>
+      <p style="margin:4px 0 0;font-size:12px;opacity:.85">Reporte mensual · ${mesNombre} ${anio}</p>
+    </div>
+    <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;padding:24px">
+      <p style="font-size:14px;line-height:1.6">Estimado(a) cliente:</p>
+      <p style="font-size:14px;line-height:1.6">
+        Adjuntamos tu reporte mensual correspondiente a <b>${mesNombre} de ${anio}</b>, con el resumen de resultados,
+        los impuestos determinados del periodo y la revisión de consistencia de tu información fiscal.
+      </p>
+      ${
+        datos.totalImpuestos && datos.totalImpuestos > 0
+          ? `<p style="font-size:14px;line-height:1.6">Impuestos por enterar del periodo: <b>${mxn(datos.totalImpuestos)}</b> (vence el día 17).</p>`
+          : ""
+      }
+      <p style="font-size:12px;color:#94a3b8;margin-top:24px">${datos.despachoNombre ?? empresa.nombre} · RFC ${empresa.rfc}</p>
+    </div>
+  </div>`;
+
+  await transporte(cfg).sendMail({
+    from: cfg.from,
+    to: datos.para,
+    subject: `Reporte mensual · ${mesNombre} ${anio} · ${empresa.nombre}`,
+    html,
+    attachments: [
+      { filename: `Reporte-${empresa.rfc}-${anio}-${mes}.pdf`, content: Buffer.from(datos.pdf), contentType: "application/pdf" },
+    ],
+  });
+}
